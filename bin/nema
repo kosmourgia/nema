@@ -1,0 +1,170 @@
+#!/bin/sh
+set -eu
+
+project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$project_root"
+
+usage() {
+    echo "usage: nema doctor|check|test|serve|ipc METHOD JSON|rendezvous KEY --generation N --payload JSON --parties N --timeout DURATION|hooks install|inspect|drain|lab continuations|lab escaped|probe app-server|probe fake-peer|interaction create|list|show|respond|surface [--format terminal|json|prompt]|changes --after N|fork fixture-start|choose|advance|inspect|artifact show|demo bidirectional --mode fixture|demo live-tool --mode live|demo fork-compare --mode fixture|live|replay"
+}
+
+command_name=${1:-}
+case "$command_name" in
+    doctor)
+        echo "Nema doctor"
+        uname -srm
+        flix --version
+        java -version 2>&1
+        codex --version
+        sqlite3 --version
+        python3 --version
+        ;;
+    check)
+        exec flix check
+        ;;
+    test)
+        flix test
+        exec python3 -m unittest discover -s pytests -p 'test_*.py'
+        ;;
+    serve)
+        exec python3 tools/daemon.py --db .nema/nema.db --socket .nema/nema.sock
+        ;;
+    ipc)
+        shift
+        exec python3 tools/ipc_client.py --socket .nema/nema.sock "$@"
+        ;;
+    rendezvous)
+        shift
+        exec python3 tools/rendezvous_client.py --socket .nema/nema.sock "$@"
+        ;;
+    hooks)
+        hook_command=${2:-}
+        case "$hook_command" in
+            install|inspect)
+                exec python3 tools/hooks_config.py "$hook_command"
+                ;;
+            drain)
+                exec python3 tools/hook_ingest.py \
+                    --db .nema/nema.db --spool .nema/hook-spool
+                ;;
+            *)
+                usage
+                exit 2
+                ;;
+        esac
+        ;;
+    lab)
+        lab_name=${2:-}
+        case "$lab_name" in
+            continuations)
+                exec flix run --entrypoint Nema.Lab.Continuation.main
+                ;;
+            escaped)
+                exec flix run --entrypoint Nema.Lab.EscapedResumption.main
+                ;;
+            *)
+                usage
+                exit 2
+                ;;
+        esac
+        ;;
+    probe)
+        probe_name=${2:-}
+        case "$probe_name" in
+            app-server)
+                exec python3 tools/app_server_probe.py \
+                    --db .nema/nema.db \
+                    --raw .nema/probes/app-server-0.154.0.jsonl \
+                    --summary protocol/codex/0.154.0/observed-handshake.json
+                ;;
+            fake-peer)
+                exec python3 tools/app_server_probe.py \
+                    --db .nema/nema.db \
+                    --raw .nema/probes/fake-app-server.jsonl \
+                    --summary .nema/probes/fake-app-server-summary.json \
+                    --connection-id fixture-bidirectional-v2 \
+                    --server-request-delay 0.25 \
+                    --command python3 tools/fake_app_server.py
+                ;;
+            *)
+                usage
+                exit 2
+                ;;
+        esac
+        ;;
+    demo)
+        demo_name=${2:-}
+        mode=${3:-}
+        if [ "$mode" = "--mode" ]; then
+            mode=${4:-}
+        else
+            mode=${mode#--mode=}
+        fi
+        case "$demo_name" in
+            bidirectional)
+                if [ "$mode" != "fixture" ]; then usage; exit 2; fi
+                python3 tools/app_server_probe.py \
+                    --db .nema/nema.db \
+                    --raw .nema/probes/fake-app-server.jsonl \
+                    --summary .nema/probes/fake-app-server-summary.json \
+                    --connection-id fixture-bidirectional-v2 \
+                    --server-request-delay 0.25 \
+                    --command python3 tools/fake_app_server.py
+                exec python3 tools/journal.py replay --db .nema/nema.db
+                ;;
+            fork-compare)
+                if [ "$mode" = "fixture" ]; then
+                    experiment_id="fixture-parser-$(date +%s%N)"
+                    python3 tools/state.py --db .nema/nema.db fork fixture-start "$experiment_id" --from-flix
+                    python3 tools/state.py --db .nema/nema.db surface --format terminal
+                    python3 tools/state.py --db .nema/nema.db fork choose "$experiment_id" \
+                        --answer "$experiment_id-streaming-output" \
+                        --responder separate-fixture-chooser
+                    python3 tools/state.py --db .nema/nema.db fork advance "$experiment_id"
+                    exec python3 tools/state.py --db .nema/nema.db fork inspect "$experiment_id"
+                elif [ "$mode" = "live" ]; then
+                    exec python3 tools/live_fork_demo.py
+                else
+                    usage
+                    exit 2
+                fi
+                ;;
+            live-tool)
+                if [ "$mode" != "live" ]; then usage; exit 2; fi
+                exec python3 tools/live_tool_demo.py
+                ;;
+            *)
+                usage
+                exit 2
+                ;;
+        esac
+        ;;
+    replay)
+        python3 tools/journal.py replay --db .nema/nema.db
+        exec python3 tools/state.py --db .nema/nema.db replay
+        ;;
+    interaction)
+        shift
+        exec python3 tools/state.py --db .nema/nema.db interaction "$@"
+        ;;
+    surface)
+        shift
+        exec python3 tools/state.py --db .nema/nema.db surface "$@"
+        ;;
+    changes)
+        shift
+        exec python3 tools/state.py --db .nema/nema.db changes "$@"
+        ;;
+    fork)
+        shift
+        exec python3 tools/state.py --db .nema/nema.db fork "$@"
+        ;;
+    artifact)
+        shift
+        exec python3 tools/state.py --db .nema/nema.db artifact "$@"
+        ;;
+    *)
+        usage
+        exit 2
+        ;;
+esac

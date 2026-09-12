@@ -1,0 +1,6 @@
+[package]
+name        = "nema"
+description = "An observable, Flix-first membrane and fork bench for Codex app-server."
+version     = "0.0.1"
+flix        = "0.75.3"
+authors     = ["Nema contributors"]

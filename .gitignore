@@ -1,0 +1,10 @@
+*.fpkg
+*.jar
+.GITHUB_TOKEN
+.nema/
+artifact/
+build/
+lib/
+crash_report_*.txt
+__pycache__/
+*.pyc

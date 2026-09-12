@@ -1,0 +1,868 @@
+{
+  "command": [
+    "codex",
+    "app-server",
+    "--stdio"
+  ],
+  "connectionEpoch": 1,
+  "connectionId": "probe-ddb711f4-7766-4b9e-8908-a0c8a2fae35a",
+  "decodedMessageCount": 3,
+  "experimentalApiRequested": true,
+  "failure": null,
+  "features": [
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "transcript_v2",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "undo",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "shell_tool",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "view_image",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "sleep_tool",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "secret_auth_storage",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "unified_exec",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "unified_exec_tty",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "shell_zsh_fork",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "unified_exec_zsh_fork",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "shell_snapshot",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "powershell_shell_version",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "shell_snapshot_v2",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "deferred_executor",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "cwd_relative_turn_diffs",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "js_repl",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "content_item_kinds",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "executed_tool_call_metadata",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "code_mode",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "code_mode_buffered_exec",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "code_mode_host",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "code_mode_prewarm",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "code_mode_interrupt",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "code_mode_only",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "js_repl_tools_only",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "terminal_resize_reflow",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "web_search_request",
+      "stage": "deprecated"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "web_search_cached",
+      "stage": "deprecated"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "standalone_web_search",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "search_tool",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "codex_git_commit",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "runtime_metrics",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "sqlite",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "memories",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "external_agent_memory_import",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "local_thread_store_compression",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "local_thread_store_shared_compression",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "background_paginated_rollout_migration",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "chronicle",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "apply_patch_freeform",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "apply_patch_streaming_events",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "apply_patch_preserve_line_endings",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "exec_permission_approvals",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "write_stdin_approval",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "hooks",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "request_permissions_tool",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "use_linux_sandbox_bwrap",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "use_legacy_landlock",
+      "stage": "deprecated"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "request_rule",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "experimental_windows_sandbox",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "elevated_windows_sandbox",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "windows_sandbox_service",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "remote_models",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "enable_request_compression",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "unbounded_connection_retries",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "network_proxy",
+      "stage": "beta"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "worktrees",
+      "stage": "beta"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "respect_system_proxy",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "multi_agent",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "multi_agent_v2",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "multi_agent_mode",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "enable_fanout",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "apps",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "psp",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "enable_mcp_apps",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "mcp_2026_07_28",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "mcp_oauth_refresh_coordination",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "apps_mcp_path_override",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "tool_search",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "tool_search_always_defer_mcp_tools",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "deferred_tool_world_state",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "non_prefixed_mcp_tool_names",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "unavailable_dummy_tools",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "tool_suggest",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "recommended_plugins",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "plugins",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "executor_capability_discovery",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "skip_host_skill_discovery",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "plugin_hooks",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "in_app_browser",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "in_app_chat",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "in_app_dictation",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "in_app_local_automation",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "in_app_updates",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "browser_use",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "browser_use_full_cdp_access",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "browser_use_external",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "computer_use",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "remote_plugin",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "plugin_sharing",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "external_migration",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "image_generation",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "omit_app_server_notification_media",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "image_resize_notice",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "unified_image_budget",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "resize_all_images",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "item_ids",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "concurrent_reasoning_summaries",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "skill_mcp_dependency_install",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "skill_search",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "skill_env_var_dependency_prompt",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "mentions_v2",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "steer",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "default_mode_request_user_input",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "send_async_message",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "terminal_visualization_instructions",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "guardian_approval",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "guardianv2.thread_context",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "guardian_reuse_parent_compaction",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "guardian_enhanced_node_repl_transcripts",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "guardian_node_repl_transcript_images",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "guardianv2",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "guardian_ext",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "goals",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "token_budget",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "context_management",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "rollout_budget",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "reasoning_effort_override",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "current_time_reminder",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "collaboration_modes",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "tool_call_mcp_elicitation",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "auth_elicitation",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "bedrock_setup_wizard",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "personality",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "artifact",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "fast_mode",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "step_model_switching",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "realtime_conversation",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "remote_control",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "image_detail_original",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "tui_app_server",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "prevent_idle_sleep",
+      "stage": "beta"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "workspace_owner_usage_nudge",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "responses_websockets",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "responses_websockets_v2",
+      "stage": "removed"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "remote_compaction_v2",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "compaction_image_budget",
+      "stage": "stable"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "retain_client_developer_messages",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": false,
+      "enabled": false,
+      "name": "use_agent_identity",
+      "stage": "underDevelopment"
+    },
+    {
+      "defaultEnabled": true,
+      "enabled": true,
+      "name": "workspace_dependencies",
+      "stage": "stable"
+    }
+  ],
+  "initialize": {
+    "codexHome": "<redacted-machine-path>",
+    "codexHomeRedacted": true,
+    "platformFamily": "unix",
+    "platformOs": "linux",
+    "userAgent": "nema/0.154.0 (Arch Linux Unknown; aarch64) dumb (nema; 0.0.1)"
+  },
+  "pendingServerRequestCount": 0,
+  "probe": "codex-app-server-initialize-and-feature-list",
+  "processExitCode": 0,
+  "rawCapture": ".nema/probes/app-server-0.154.0.jsonl",
+  "rawRecordCount": 6,
+  "schemaVersion": 1,
+  "serverRequestCount": 0
+}

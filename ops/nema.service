@@ -1,0 +1,13 @@
+[Unit]
+Description=Nema observable Codex membrane
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/nema
+ExecStart=%h/nema/bin/nema serve
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
