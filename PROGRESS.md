@@ -71,6 +71,8 @@ Java 21 is only Flix's compatibility floor. Nema uses the VM's default Java
 - `systemd-analyze --user verify ops/nema.service` passes. A transient user
   service survived a forced child failure with a new PID, served IPC again,
   and removed its socket on normal stop.
+- The local `main` branch tracks `git@github.com:kosmourgia/nema.git`; GitHub's
+  first `Build and Test` run passed after publication.
 
 ## Last passing verification
 
