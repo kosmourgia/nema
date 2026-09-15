@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Nema local demo zygon",
+  "version": "0.1.0",
+  "minimum_chrome_version": "120",
+  "description": "Attaches only to the explicitly configured local Nema demo region.",
+  "permissions": ["storage", "tabs", "alarms", "webNavigation"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": {"service_worker": "worker.js"},
+  "content_scripts": [{"matches": ["http://127.0.0.1/*"], "js": ["page_config.js", "content.js"], "run_at": "document_idle", "all_frames": false}]
+}
