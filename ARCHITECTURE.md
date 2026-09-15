@@ -66,6 +66,21 @@ produces the actual recipes consumed by the fixture controller. Python is the
 current small OS-process, SQLite, JSONL router, and non-JVM client adapter. The
 boundary is explicit and replaceable; no in-process JVM object crosses it.
 
+## Vivarium boundary
+
+`Nema.Lab.Vivarium` is a deliberately isolated thought experiment. Its World
+is immutable data: locally ordered Pulses drive Beats, live Observer roles are
+derived from bindings, systole stages work against the prior closed state,
+commit publishes revisions and effect invocations, and diastole dispatches or
+resolves them. Measures coordinate independent Pulse frontiers without adding
+a global clock. Datalog reads a fact projection of that World and never drives
+it.
+
+The result-bearing `Ask` is the one intentional runtime edge. Its Flix handler
+returns a live local resumption, while the World retains only a stable
+continuation address and its time-relative binding. The specimen does not
+serialize JVM continuations, add persistence, or alter the existing fork bench.
+
 ## Durability
 
 SQLite uses WAL, foreign keys, `synchronous=FULL`, and a five-second busy

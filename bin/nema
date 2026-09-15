@@ -5,7 +5,7 @@ project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_root"
 
 usage() {
-    echo "usage: nema doctor|check|test|serve|ipc METHOD JSON|rendezvous KEY --generation N --payload JSON --parties N --timeout DURATION|hooks install|inspect|drain|lab continuations|lab escaped|probe app-server|probe fake-peer|interaction create|list|show|respond|surface [--format terminal|json|prompt]|changes --after N|fork fixture-start|choose|advance|inspect|artifact show|demo bidirectional --mode fixture|demo live-tool --mode live|demo fork-compare --mode fixture|live|replay"
+    echo "usage: nema doctor|check|test|serve|ipc METHOD JSON|rendezvous KEY --generation N --payload JSON --parties N --timeout DURATION|hooks install|inspect|drain|lab continuations|lab escaped|lab vivarium|probe app-server|probe fake-peer|interaction create|list|show|respond|surface [--format terminal|json|prompt]|changes --after N|fork fixture-start|choose|advance|inspect|artifact show|demo bidirectional --mode fixture|demo live-tool --mode live|demo fork-compare --mode fixture|live|replay"
 }
 
 command_name=${1:-}
@@ -61,6 +61,9 @@ case "$command_name" in
                 ;;
             escaped)
                 exec flix run --entrypoint Nema.Lab.EscapedResumption.main
+                ;;
+            vivarium)
+                exec flix run --entrypoint Nema.Lab.Vivarium.main
                 ;;
             *)
                 usage

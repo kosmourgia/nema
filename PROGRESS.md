@@ -1,6 +1,6 @@
 # Nema progress
 
-Last updated: 12 September 2026
+Last updated: 15 September 2026
 
 ## Current boundary
 
@@ -15,6 +15,11 @@ owns OS processes, SQLite, and JSONL/Unix-socket adapters. Flix owns executable
 effect, CSP, reducer, associated-type/effect, and Datalog experiments. Raw
 operational observations remain distinct from both typed reductions and
 semantic projections.
+
+Further expansion of that seed is paused. A separate, runnable
+`Nema.Lab.Vivarium` specimen now exercises the project's conceptual vocabulary
+without refactoring or coupling itself to the fork bench. It is an immutable
+laboratory model, not a proposed production runtime.
 
 Obsolete Mac/Lima bridge notes, placeholders, and unrelated starter debris
 were removed after the Arch remote project became canonical.
@@ -58,6 +63,13 @@ Java 21 is only Flix's compatibility floor. Nema uses the VM's default Java
   escaped later resumption, CSP worker-local effect handling, channels,
   higher-kinded associated types, associated effects, and Datalog `inject`.
   The multi-resumption output is the direct input to the fixture fork controller.
+- Added the deterministic Vivarium trace for inert Objects, distinct Object /
+  Revision / payload / locator identities, observer-relative registrations,
+  transactional Beat phases, committed `Notify` and result-bearing `Ask`
+  invocations, independent observer projections, stable continuation addresses,
+  two-Pulse Measure frontiers, and read-only Datalog topology projections. Its
+  `Ask` holds a real escaped Flix resumption locally and resumes it under a
+  later Beat's handler context.
 - Added transactional terminal, JSON, and prompt surfaces, plus cursor-based
   catch-up and deliberate stale/retry/conflict dispositions.
 - Added a mode-`0600` Unix JSONL daemon and standard-library clients. A stalled
@@ -78,8 +90,11 @@ Java 21 is only Flix's compatibility floor. Nema uses the VM's default Java
 
 ```text
 ./bin/nema test
-  Flix: 14 passed, 0 failed
+  Flix: 26 passed, 0 failed
   Python: 11 passed, 0 failed
+
+./bin/nema lab vivarium
+  deterministic Object/Pulse/Beat/Measure/continuation trace
 
 ./bin/nema demo bidirectional --mode fixture
   10 raw records; malformed 1, notifications 3, requests 3, responses 3
@@ -113,6 +128,10 @@ Java 21 is only Flix's compatibility floor. Nema uses the VM's default Java
 - Restart reconstructs durable protocol/controller state, not a Flix stack or
   a native request from a dead app-server connection. Unknown delivery outcome
   remains an explicit controller state.
+- Vivarium keeps its live resumption outside the immutable World. The World
+  records a stable address and changing `Live` / `Durable` / `Resolved` /
+  `Dropped` binding, but the durable recipe is illustrative and is not JVM
+  continuation serialization.
 - Hook raw bytes may contain private prompts and stay ignored under `.nema/`.
   The 64 MiB fallback ceiling records a hash-and-length gap rather than silently
   claiming unavailable bytes.
