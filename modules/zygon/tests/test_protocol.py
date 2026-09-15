@@ -257,6 +257,20 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(asyncio.TimeoutError):
             await asyncio.wait_for(self.incoming.get(), 0.05)
 
+    async def test_provider_can_close_from_its_own_callback_without_self_join(self):
+        closed = asyncio.Event()
+        async def handler(_invocation):
+            await self.owner.close()
+            closed.set()
+        self.owner.on_invoke = handler
+        invocation = await self.invoke()
+        await asyncio.wait_for(closed.wait(), 2)
+        terminal = await self.wait_status(invocation["id"])
+        self.assertEqual(terminal["status"], "outcome-unknown")
+        host = next(r for r in (await self.snapshot())["registrations"] if r["id"] == "host")
+        self.assertEqual(host["presence"], "unknown")
+        self.assertTrue(host["active"])
+
     async def test_explicit_unregister_ends_binding_and_settles_pending(self):
         invocation = await self.invoke()
         await self.owner.call("unregister", reference(self.host) | {"reason": "detach"})

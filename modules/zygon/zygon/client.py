@@ -104,6 +104,9 @@ class Client:
         self.reader_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await self.reader_task
-        for worker in list(self.workers):
+        # A provider is allowed to detach from its own callback. Joining that
+        # callback here would await ourselves and create a cancellation cycle.
+        workers = [worker for worker in self.workers if worker is not asyncio.current_task()]
+        for worker in workers:
             worker.cancel()
-        await asyncio.gather(*list(self.workers), return_exceptions=True)
+        await asyncio.gather(*workers, return_exceptions=True)

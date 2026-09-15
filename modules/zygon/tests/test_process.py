@@ -8,6 +8,7 @@ import fcntl
 import json
 from pathlib import Path
 import signal
+import socket
 import sqlite3
 import struct
 import sys
@@ -17,7 +18,7 @@ import unittest
 import uuid
 
 from zygon.attached import AttachedCompanion
-from zygon.processes import CaptureFull, OwnedProcess, RawSpool
+from zygon.processes import CaptureFull, CooperativeChannel, OwnedProcess, RawSpool, compact
 
 
 class FakeRegistry:
@@ -302,6 +303,22 @@ class ProcessTests(unittest.IsolatedAsyncioTestCase):
         rows = [r for r in (await requester.call("inspect", {}))["registrations"] if r["id"] != "caller"]
         self.assertTrue(all(row["presence"] == "unknown" for row in rows))
 
+    async def test_attached_capture_limit_detaches_without_stopping_host(self):
+        server = await self.registry()
+        observer = await self.client(server)
+        endpoint = self.runtime / "h.sock"
+        external = await self.external_host(endpoint)
+        attached = await AttachedCompanion.attach(await self.client(server), endpoint, self.runtime / "a")
+        self.attached.append(attached)
+        attached.spool.max_bytes = attached.spool.bytes_used
+        with self.assertRaises(CaptureFull):
+            await attached.native.request("demo.read")
+        await asyncio.wait_for(attached.monitor, 3)
+        self.assertEqual(attached.spool.failure["body"]["action"], "detach-attached-companion")
+        self.assertIsNone(external.returncode)
+        await asyncio.sleep(0.05)
+        self.assertTrue(all(row["presence"] == "unknown" for row in (await observer.call("inspect", {}))["registrations"]))
+
     async def test_owned_reconnect_keeps_incarnation_and_publishes_spool(self):
         server = await self.registry()
         provider = await self.client(server)
@@ -336,6 +353,30 @@ class ProcessTests(unittest.IsolatedAsyncioTestCase):
         companion.kill()
         await companion.wait()
         await eventually(lambda: exited(child_pid))
+
+    async def test_native_duplicate_terminal_and_partial_invalid_bytes_retained(self):
+        first, second = socket.socketpair()
+        reader, writer = await asyncio.open_connection(sock=first)
+        peer_reader, peer_writer = await asyncio.open_connection(sock=second)
+        observed = []
+        channel = CooperativeChannel(reader, writer, lambda stream, data: observed.append((stream, data)))
+        try:
+            pending = asyncio.create_task(channel.request("demo.echo", correlation="native-duplicate"))
+            request = json.loads(await peer_reader.readline())
+            self.assertEqual(request["id"], "native-duplicate")
+            first_reply = compact({"version": 1, "id": "native-duplicate", "status": "completed", "value": 1})
+            duplicate = compact({"version": 1, "id": "native-duplicate", "status": "failed", "value": 2})
+            peer_writer.write(first_reply + duplicate + b'partial-native:\xff')
+            await peer_writer.drain()
+            peer_writer.close()
+            await peer_writer.wait_closed()
+            self.assertEqual((await pending)["value"], 1)
+            await channel.task
+            received = b"".join(data for stream, data in observed if stream == "control.in")
+            self.assertEqual(received, first_reply + duplicate + b'partial-native:\xff')
+        finally:
+            await channel.close()
+            peer_writer.close()
 
 
 class SpoolTests(unittest.TestCase):

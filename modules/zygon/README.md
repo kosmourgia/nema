@@ -146,4 +146,5 @@ deadline. Nothing installs/enables it automatically. It supervises the registry;
 separately launched companions need their own unit/scope for full cgroup cleanup.
 
 See [protocol](PROTOCOL.md), [process details](docs/process.md),
-[Flix details](docs/flix.md), [integration](INTEGRATION.md), and [progress](PROGRESS.md).
+[Flix details](docs/flix.md), [acceptance evidence](docs/acceptance.md),
+[integration](INTEGRATION.md), and [progress](PROGRESS.md).

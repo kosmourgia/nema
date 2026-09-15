@@ -79,6 +79,7 @@ class RawSpool:
         self.bytes_used, self.record_count = self.database.execute(
             "SELECT coalesce(sum(length(CAST(record AS BLOB))),0),count(*) FROM records").fetchone()
         self.failure = None
+        self.failure_action = "stop-owned-process"
         self.closed = False
 
     def append(self, kind: str, body: dict, parents: list[str] | None = None) -> dict:
@@ -108,7 +109,7 @@ class RawSpool:
                         "source": self.source, "incarnation": self.incarnation, "seq": str(self.sequence),
                         "kind": "capture.failure", "parents": [], "body": {
                             "reason": reason, "stream": stream, "unavailableBytesInRead": unavailable_bytes,
-                            "laterBytes": "unknown", "action": "stop-owned-process",
+                            "laterBytes": "unknown", "action": self.failure_action,
                             "monotonicNs": str(time.monotonic_ns())}}
         self.database.execute("INSERT INTO records(record) VALUES (?)", (compact(self.failure).decode(),))
         self.database.commit()
@@ -174,23 +175,31 @@ class CooperativeChannel:
         await self.send({"version": 1, "method": "cancel", "arguments": {"correlation": correlation}})
 
     async def _read(self):
+        buffer = bytearray()
         try:
             while True:
-                line = await self.reader.readline()
-                if not line:
+                chunk = await self.reader.read(16384)
+                if not chunk:
                     raise ConnectionError("cooperative endpoint EOF; pending outcome unknown")
-                if len(line) > MAX_FRAME or not line.endswith(b"\n"):
-                    raise ValueError("invalid/oversized cooperative frame")
                 if self.observe:
-                    self.observe("control.in", line)
-                value = json.loads(line)
-                if not isinstance(value, dict) or value.get("version") != 1:
-                    raise ValueError("invalid cooperative envelope")
-                waiter = self.pending.get(value.get("id"))
-                if waiter is not None and not waiter.done() and value.get("status") in TERMINAL:
-                    waiter.set_result(value)
+                    self.observe("control.in", chunk)
+                buffer.extend(chunk)
+                while b"\n" in buffer:
+                    line, _, rest = buffer.partition(b"\n")
+                    buffer = bytearray(rest)
+                    if len(line) + 1 > MAX_FRAME:
+                        raise ValueError("oversized cooperative frame")
+                    value = json.loads(line)
+                    if not isinstance(value, dict) or value.get("version") != 1:
+                        raise ValueError("invalid cooperative envelope")
+                    waiter = self.pending.get(value.get("id"))
+                    if waiter is not None and not waiter.done() and value.get("status") in TERMINAL:
+                        waiter.set_result(value)
+                if len(buffer) >= MAX_FRAME:
+                    raise ValueError("oversized cooperative partial frame")
                 # Duplicates and unknown observations remain in raw capture.
         except (Exception, asyncio.CancelledError) as error:
+            self.writer.close()
             for waiter in list(self.pending.values()):
                 if not waiter.done():
                     waiter.set_exception(ConnectionError(str(error) or "cooperative channel closed"))
@@ -278,10 +287,10 @@ class OwnedProcess:
              "kind": "surface", "medium": mode, "mode": "owned", "operations": [], "parent": self.ref,
              "metadata": {"streams": ["stdout", "stderr"] if mode == "pipe" else ["pty"]}}]
         self.client.on_invoke, self.client.on_cancel = self._invoke, self._cancel
-        await self._register()
-        self.publisher = asyncio.create_task(self._publish())
         parent_socket = child_socket = slave = None
         try:
+            await self._register()
+            self.publisher = asyncio.create_task(self._publish())
             if self.cooperative:
                 parent_socket, child_socket = socket.socketpair()
                 self.command = [*self.command, "--control-fd", str(child_socket.fileno())]

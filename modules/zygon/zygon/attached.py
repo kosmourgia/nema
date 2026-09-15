@@ -10,9 +10,10 @@ import contextlib
 import json
 from pathlib import Path
 import signal
+import sqlite3
 import uuid
 
-from zygon.processes import MAX_FRAME, CooperativeChannel, RawSpool, private_directory, save_private
+from zygon.processes import MAX_FRAME, CaptureFull, CooperativeChannel, RawSpool, private_directory, save_private
 
 
 class AttachedCompanion:
@@ -23,6 +24,7 @@ class AttachedCompanion:
         self.endpoint_path = Path(endpoint_path)
         self.spool = RawSpool(self.runtime_dir / ("attached-" + uuid.uuid4().hex + ".sqlite"),
                               "attachment-" + uuid.uuid4().hex, "connection-" + uuid.uuid4().hex)
+        self.spool.failure_action = "detach-attached-companion"
         self.operations = {}
         self.publisher = self.monitor = None
         self.closed = False
@@ -83,8 +85,12 @@ class AttachedCompanion:
         self.publisher = asyncio.create_task(self._publish())
 
     def _capture(self, stream, payload):
-        for offset in range(0, len(payload), 16384):
-            self.spool.chunk(stream, payload[offset:offset + 16384])
+        try:
+            for offset in range(0, len(payload), 16384):
+                self.spool.chunk(stream, payload[offset:offset + 16384])
+        except (CaptureFull, sqlite3.Error, OSError):
+            self.native.writer.close()
+            raise
 
     async def _publish(self):
         try:
