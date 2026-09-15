@@ -157,6 +157,10 @@ Java 21 is only Flix's compatibility floor. Nema uses the VM's default Java
   blocked in `Channel.recv`; scope exit waits. The live specimen therefore
   uses a cooperative `Stop` handshake to resume/detach workers before closing
   their region. It does not claim preemptive process cancellation.
+- Flix 0.75.3's recursive `ConstraintGen` overflowed a 1 MiB compiler thread
+  stack when the deterministic driver was one deeply nested block. Splitting
+  it into Beat/Measure phase helpers passes with `-Xss1m`; Nema does not require
+  a larger JVM stack setting.
 - Hook raw bytes may contain private prompts and stay ignored under `.nema/`.
   The 64 MiB fallback ceiling records a hash-and-length gap rather than silently
   claiming unavailable bytes.

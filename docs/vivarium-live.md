@@ -43,6 +43,11 @@ Watch for the causal joints:
 All waits and resumptions are coordinated by unbuffered channels. There are no
 sleeps or wall-clock timers.
 
+The deterministic driver is split into small Beat/Measure phase functions.
+Besides making the causal protocol easier to read, this avoids a Flix 0.75.3
+`ConstraintGen` stack overflow observed when the same driver was one deeply
+nested block on a JVM with a 1 MiB thread stack.
+
 ## One observed Flix constraint
 
 On Flix 0.75.3, leaving a region while its child is blocked in `Channel.recv`

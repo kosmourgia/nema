@@ -142,6 +142,34 @@ pub mod Nema.Lab.Vivarium.Live {
         measure = LiveMeasure
     }
 
+    type alias PrimaryDriver = {
+        eventRx = Receiver[LiveEvent],
+        pulseTx = Sender[PulseSignal],
+        publicationRx = Receiver[Publication],
+        dispatchAckTx = Sender[Unit],
+        resolutionTx = Sender[ResolutionCommand],
+        snapshotRx = Receiver[RuntimeState],
+        finalRx = Receiver[RuntimeState],
+        recorderTx = Sender[SinkSignal],
+        witnessTx = Sender[SinkSignal]
+    }
+
+    type alias PrimaryResult = {
+        events = List[LiveEvent],
+        initialState = RuntimeState,
+        afterAbort = RuntimeState,
+        afterNotify = RuntimeState,
+        afterAsk = RuntimeState,
+        finalState = RuntimeState,
+        notifyInvocation = Invocation,
+        askInvocation = Invocation
+    }
+
+    type alias MeasureResult = {
+        events = List[LiveEvent],
+        measure = LiveMeasure
+    }
+
     /// `next` captures the Observer's continuation. Its worker-local handler
     /// announces Waiting, blocks on a CSP channel, and resumes on a Beat.
     pub eff Pulse {
@@ -572,9 +600,65 @@ pub mod Nema.Lab.Vivarium.Live {
         case LiveEvent.MeasureClosed(m, p3, p4) => "M${m} CLOSE {P3:${p3}, P4:${p4}}"
     }
 
-    /// A deterministic driver around genuinely blocking workers. Every
-    /// receive is paired with a protocol event, so tests require no sleeps.
-    pub def scenario(): LiveResult \ {Chan, NonDet} = region rc {
+    def driveAbortedBeat(driver: PrimaryDriver): (List[LiveEvent], RuntimeState) \ {Chan, NonDet} = {
+        Channel.send(PulseSignal.Beat(1), driver#pulseTx);
+        let phase = receiveMany(6, driver#eventRx);
+        let state = Channel.recv(driver#snapshotRx);
+        let waiting = Channel.recv(driver#eventRx);
+        (LiveEvent.Downbeat(3, 1) :: phase ::: List#{waiting}, state)
+    }
+
+    def driveNotifyBeat(driver: PrimaryDriver): (List[LiveEvent], RuntimeState, Invocation) \ {Chan, NonDet} = {
+        Channel.send(PulseSignal.Beat(2), driver#pulseTx);
+        let phase = receiveMany(5, driver#eventRx);
+        let publication = Channel.recv(driver#publicationRx);
+        let diastole = Channel.recv(driver#eventRx);
+        Channel.send(SinkSignal.Deliver(publication), driver#recorderTx);
+        let recorderDelivery = Channel.recv(driver#eventRx);
+        Channel.send(SinkSignal.Deliver(publication), driver#witnessTx);
+        let witnessDelivery = Channel.recv(driver#eventRx);
+        Channel.send((), driver#dispatchAckTx);
+        let settled = Channel.recv(driver#eventRx);
+        let state = Channel.recv(driver#snapshotRx);
+        let waiting = Channel.recv(driver#eventRx);
+        let tail = List#{diastole, recorderDelivery, witnessDelivery, settled, waiting};
+        (LiveEvent.Downbeat(3, 2) :: phase ::: tail, state, publication#invocation)
+    }
+
+    def driveAskBeat(driver: PrimaryDriver): (List[LiveEvent], RuntimeState, Invocation) \ {Chan, NonDet} = {
+        Channel.send(PulseSignal.Beat(3), driver#pulseTx);
+        let opening = receiveMany(4, driver#eventRx);
+        let invocation = Channel.recv(driver#publicationRx)#invocation;
+        let pending = receiveMany(2, driver#eventRx);
+        Channel.send(ResolutionCommand.Rebind(17, BindingKind.Durable("recipe:continue")), driver#resolutionTx);
+        let durable = Channel.recv(driver#eventRx);
+        Channel.send(ResolutionCommand.Rebind(17, BindingKind.Live), driver#resolutionTx);
+        let liveAgain = Channel.recv(driver#eventRx);
+        Channel.send(ResolutionCommand.Resolve(17, "yes", 4), driver#resolutionTx);
+        let resolved = receiveMany(2, driver#eventRx);
+        let state = Channel.recv(driver#snapshotRx);
+        let waiting = Channel.recv(driver#eventRx);
+        let rebinding = List#{durable, liveAgain, LiveEvent.Downbeat(3, 4)};
+        (LiveEvent.Downbeat(3, 3) :: opening ::: pending ::: rebinding ::: resolved ::: List#{waiting}, state, invocation)
+    }
+
+    def driveHeartbeatAndStop(driver: PrimaryDriver): (List[LiveEvent], RuntimeState) \ {Chan, NonDet} = {
+        Channel.send(PulseSignal.Beat(5), driver#pulseTx);
+        let heartbeat = receiveMany(3, driver#eventRx);
+        let _state = Channel.recv(driver#snapshotRx);
+        let waiting = Channel.recv(driver#eventRx);
+        Channel.send(PulseSignal.Stop, driver#pulseTx);
+        let primaryDetached = Channel.recv(driver#eventRx);
+        let finalState = Channel.recv(driver#finalRx);
+        Channel.send(SinkSignal.Stop, driver#recorderTx);
+        let recorderDetached = Channel.recv(driver#eventRx);
+        Channel.send(SinkSignal.Stop, driver#witnessTx);
+        let witnessDetached = Channel.recv(driver#eventRx);
+        let tail = List#{waiting, primaryDetached, recorderDetached, witnessDetached};
+        (LiveEvent.Downbeat(3, 5) :: heartbeat ::: tail, finalState)
+    }
+
+    def primaryScenario(): PrimaryResult \ {Chan, NonDet} = region rc {
         let (eventTx, eventRx) = Channel.unbuffered();
         let (pulseTx, pulseRx) = Channel.unbuffered();
         let (publicationTx, publicationRx) = Channel.unbuffered();
@@ -584,7 +668,6 @@ pub mod Nema.Lab.Vivarium.Live {
         let (finalTx, finalRx) = Channel.unbuffered();
         let (recorderTx, recorderRx) = Channel.unbuffered();
         let (witnessTx, witnessRx) = Channel.unbuffered();
-
         spawn sink(18, "recorded", recorderRx, eventTx) @ rc;
         let recorderWaiting = Channel.recv(eventRx);
         spawn sink(19, "witnessed", witnessRx, eventTx) @ rc;
@@ -592,74 +675,60 @@ pub mod Nema.Lab.Vivarium.Live {
         let initial = initialState();
         spawn Channel.send(runObserver(17, 3, initial, pulseRx, eventTx, publicationTx, dispatchAckRx, resolutionRx, snapshotTx), finalTx) @ rc;
         let firstWait = Channel.recv(eventRx);
+        let driver = {
+            eventRx = eventRx, pulseTx = pulseTx, publicationRx = publicationRx,
+            dispatchAckTx = dispatchAckTx, resolutionTx = resolutionTx,
+            snapshotRx = snapshotRx, finalRx = finalRx,
+            recorderTx = recorderTx, witnessTx = witnessTx
+        };
+        let prelude = List#{
+            LiveEvent.Born(17, 40),
+            LiveEvent.Representation(17, "Aeron(stream:17)"),
+            LiveEvent.Representation(17, "CAS(sha256:17)"),
+            LiveEvent.Attached(17, 3),
+            recorderWaiting,
+            witnessWaiting,
+            firstWait
+        };
+        let (abortEvents, afterAbort) = driveAbortedBeat(driver);
+        let (notifyEvents, afterNotify, notifyInvocation) = driveNotifyBeat(driver);
+        let (askEvents, afterAsk, askInvocation) = driveAskBeat(driver);
+        let (finalEvents, finalState) = driveHeartbeatAndStop(driver);
+        {
+            events = prelude ::: abortEvents ::: notifyEvents ::: askEvents ::: finalEvents,
+            initialState = initial,
+            afterAbort = afterAbort,
+            afterNotify = afterNotify,
+            afterAsk = afterAsk,
+            finalState = finalState,
+            notifyInvocation = notifyInvocation,
+            askInvocation = askInvocation
+        }
+    }
 
-        Channel.send(PulseSignal.Beat(1), pulseTx);
-        let abortEvents = receiveMany(6, eventRx);
-        let afterAbort = Channel.recv(snapshotRx);
-        let waitAfterAbort = Channel.recv(eventRx);
-
-        Channel.send(PulseSignal.Beat(2), pulseTx);
-        let commitEvents = receiveMany(5, eventRx);
-        let notifyPublication = Channel.recv(publicationRx);
-        let notifyInvocation = notifyPublication#invocation;
-        let notifyDiastole = Channel.recv(eventRx);
-        Channel.send(SinkSignal.Deliver(notifyPublication), recorderTx);
-        let recorderDelivery = Channel.recv(eventRx);
-        Channel.send(SinkSignal.Deliver(notifyPublication), witnessTx);
-        let witnessDelivery = Channel.recv(eventRx);
-        Channel.send((), dispatchAckTx);
-        let notifySettled = Channel.recv(eventRx);
-        let afterNotify = Channel.recv(snapshotRx);
-        let waitAfterNotify = Channel.recv(eventRx);
-
-        Channel.send(PulseSignal.Beat(3), pulseTx);
-        let askOpening = receiveMany(4, eventRx);
-        let askInvocation = Channel.recv(publicationRx)#invocation;
-        let askDiastoleAndPending = receiveMany(2, eventRx);
-        Channel.send(ResolutionCommand.Rebind(17, BindingKind.Durable("recipe:continue")), resolutionTx);
-        let durableEvent = Channel.recv(eventRx);
-        Channel.send(ResolutionCommand.Rebind(17, BindingKind.Live), resolutionTx);
-        let liveAgainEvent = Channel.recv(eventRx);
-        Channel.send(ResolutionCommand.Resolve(17, "yes", 4), resolutionTx);
-        let resolvedEvents = receiveMany(2, eventRx);
-        let afterAsk = Channel.recv(snapshotRx);
-        let waitAfterAsk = Channel.recv(eventRx);
-
-        Channel.send(PulseSignal.Beat(5), pulseTx);
-        let heartbeatEvents = receiveMany(3, eventRx);
-        let _afterHeartbeat = Channel.recv(snapshotRx);
-        let waitAfterHeartbeat = Channel.recv(eventRx);
-        Channel.send(PulseSignal.Stop, pulseTx);
-        let primaryDetached = Channel.recv(eventRx);
-        let finalState = Channel.recv(finalRx);
-        Channel.send(SinkSignal.Stop, recorderTx);
-        let recorderDetached = Channel.recv(eventRx);
-        Channel.send(SinkSignal.Stop, witnessTx);
-        let witnessDetached = Channel.recv(eventRx);
-
-        let (measureP3Tx, measureP3Rx) = Channel.unbuffered();
-        let (measureP4Tx, measureP4Rx) = Channel.unbuffered();
-        spawn runMeasureParticipant(17, 3, measureP3Rx, eventTx) @ rc;
-        let measureP3Waiting = Channel.recv(eventRx);
-        spawn runMeasureParticipant(19, 4, measureP4Rx, eventTx) @ rc;
-        let measureP4Waiting = Channel.recv(eventRx);
-        let p3Beat6 = driveMeasureBeat(3, 6, measureP3Tx, eventRx);
+    def driveLiveMeasure(
+        p3Tx: Sender[PulseSignal],
+        p4Tx: Sender[PulseSignal],
+        eventRx: Receiver[LiveEvent],
+        p3Waiting: LiveEvent,
+        p4Waiting: LiveEvent
+    ): MeasureResult \ {Chan, NonDet} = {
+        let p3Beat6 = driveMeasureBeat(3, 6, p3Tx, eventRx);
         let gathering = LiveEvent.MeasureGathering(2, 4);
-        let p3Beat7 = driveMeasureBeat(3, 7, measureP3Tx, eventRx);
-        let p4Beat9 = driveMeasureBeat(4, 9, measureP4Tx, eventRx);
+        let p3Beat7 = driveMeasureBeat(3, 7, p3Tx, eventRx);
+        let p4Beat9 = driveMeasureBeat(4, 9, p4Tx, eventRx);
         let opened = LiveEvent.MeasureOpened(2, 7, 9);
-        let p4Beat10 = driveMeasureBeat(4, 10, measureP4Tx, eventRx);
-        let p3Beat8 = driveMeasureBeat(3, 8, measureP3Tx, eventRx);
+        let p4Beat10 = driveMeasureBeat(4, 10, p4Tx, eventRx);
+        let p3Beat8 = driveMeasureBeat(3, 8, p3Tx, eventRx);
         let questionComplete = LiveEvent.ObligationCompleted(2, "question");
-        let p3Beat9 = driveMeasureBeat(3, 9, measureP3Tx, eventRx);
-        let p4Beat11 = driveMeasureBeat(4, 11, measureP4Tx, eventRx);
+        let p3Beat9 = driveMeasureBeat(3, 9, p3Tx, eventRx);
+        let p4Beat11 = driveMeasureBeat(4, 11, p4Tx, eventRx);
         let answerComplete = LiveEvent.ObligationCompleted(2, "answer");
         let closed = LiveEvent.MeasureClosed(2, 9, 11);
-        Channel.send(PulseSignal.Stop, measureP3Tx);
-        let measureP3Detached = Channel.recv(eventRx);
-        Channel.send(PulseSignal.Stop, measureP4Tx);
-        let measureP4Detached = Channel.recv(eventRx);
-
+        Channel.send(PulseSignal.Stop, p3Tx);
+        let p3Detached = Channel.recv(eventRx);
+        Channel.send(PulseSignal.Stop, p4Tx);
+        let p4Detached = Channel.recv(eventRx);
         let measure = {
             id = 2,
             p3Beats = List#{6, 7, 8, 9},
@@ -670,39 +739,41 @@ pub mod Nema.Lab.Vivarium.Live {
             closing = List#{(3, 9), (4, 11)},
             obligations = Set#{"answer", "question"}
         };
-        let prelude = List#{
-            LiveEvent.Born(17, 40),
-            LiveEvent.Representation(17, "Aeron(stream:17)"),
-            LiveEvent.Representation(17, "CAS(sha256:17)"),
-            LiveEvent.Attached(17, 3),
-            recorderWaiting,
-            witnessWaiting,
-            firstWait,
-            LiveEvent.Downbeat(3, 1)
-        };
-        let notify = abortEvents ::: (waitAfterAbort :: LiveEvent.Downbeat(3, 2) :: commitEvents) ::: List#{
-            notifyDiastole, recorderDelivery, witnessDelivery, notifySettled, waitAfterNotify,
-            LiveEvent.Downbeat(3, 3)
-        };
-        let asking = askOpening ::: askDiastoleAndPending ::: List#{durableEvent, liveAgainEvent, LiveEvent.Downbeat(3, 4)} ::: resolvedEvents ::: List#{
-            waitAfterAsk, LiveEvent.Downbeat(3, 5)
-        } ::: heartbeatEvents ::: List#{waitAfterHeartbeat, primaryDetached, recorderDetached, witnessDetached};
-        let measuring = List#{measureP3Waiting, measureP4Waiting} ::: p3Beat6 ::: (gathering :: p3Beat7) ::: p4Beat9 ::: (opened :: p4Beat10) ::: p3Beat8 ::: (questionComplete :: p3Beat9) ::: p4Beat11 ::: List#{answerComplete, closed, measureP3Detached, measureP4Detached};
-        let events = prelude ::: notify ::: asking ::: measuring;
+        let events = List#{p3Waiting, p4Waiting} ::: p3Beat6 ::: (gathering :: p3Beat7) ::: p4Beat9 ::: (opened :: p4Beat10) ::: p3Beat8 ::: (questionComplete :: p3Beat9) ::: p4Beat11 ::: List#{answerComplete, closed, p3Detached, p4Detached};
+        {events = events, measure = measure}
+    }
+
+    def measureScenario(): MeasureResult \ {Chan, NonDet} = region rc {
+        let (eventTx, eventRx) = Channel.unbuffered();
+        let (p3Tx, p3Rx) = Channel.unbuffered();
+        let (p4Tx, p4Rx) = Channel.unbuffered();
+        spawn runMeasureParticipant(17, 3, p3Rx, eventTx) @ rc;
+        let p3Waiting = Channel.recv(eventRx);
+        spawn runMeasureParticipant(19, 4, p4Rx, eventTx) @ rc;
+        let p4Waiting = Channel.recv(eventRx);
+        driveLiveMeasure(p3Tx, p4Tx, eventRx, p3Waiting, p4Waiting)
+    }
+
+    /// A deterministic driver around genuinely blocking workers. Every
+    /// receive is paired with a protocol event, so tests require no sleeps.
+    pub def scenario(): LiveResult \ {Chan, NonDet} = {
+        let primary = primaryScenario();
+        let measured = measureScenario();
+        let events = primary#events ::: measured#events;
         let liveInterpretations = events |> List.filterMap(interpretation) |> List.toSet;
         let attachedTopology = topology(true, true, None, None);
         let pendingTopology = topology(true, false, Some(BindingKind.Live), None);
-        let finalTopology = topology(false, false, Some(BindingKind.Resolved("yes")), Some(measure));
+        let finalTopology = topology(false, false, Some(BindingKind.Resolved("yes")), Some(measured#measure));
         {
             events = events,
             trace = events |> List.map(renderEvent) |> String.intercalate("\n"),
-            initialState = initial,
-            afterAbort = afterAbort,
-            afterNotify = afterNotify,
-            afterAsk = afterAsk,
-            finalState = finalState,
-            notifyInvocation = notifyInvocation,
-            askInvocation = askInvocation,
+            initialState = primary#initialState,
+            afterAbort = primary#afterAbort,
+            afterNotify = primary#afterNotify,
+            afterAsk = primary#afterAsk,
+            finalState = primary#finalState,
+            notifyInvocation = primary#notifyInvocation,
+            askInvocation = primary#askInvocation,
             liveInterpretations = liveInterpretations,
             pureInterpretations = pureReference(),
             bindingHistory = List#{BindingKind.Live, BindingKind.Durable("recipe:continue"), BindingKind.Live, BindingKind.Resolved("yes")},
@@ -713,7 +784,7 @@ pub mod Nema.Lab.Vivarium.Live {
             attachedTopology = attachedTopology,
             pendingTopology = pendingTopology,
             finalTopology = finalTopology,
-            measure = measure
+            measure = measured#measure
         }
     }
 
