@@ -1,6 +1,7 @@
 package nema.aeron;
 
 import io.aeron.Aeron;
+import io.aeron.exceptions.AeronException;
 import io.aeron.AeronCounters;
 import io.aeron.ChannelUri;
 import io.aeron.ControlledFragmentAssembler;
@@ -49,6 +50,8 @@ public final class ArchiveBridge implements AutoCloseable {
     private final String incarnation;
     private final Set<AutoCloseable> children = new HashSet<>();
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
+    private final ArrayBlockingQueue<String> diagnostics = new ArrayBlockingQueue<>(64);
+    private final AtomicLong droppedDiagnostics = new AtomicLong();
     private volatile boolean closed;
     private int leakedChildren;
 
@@ -145,7 +148,13 @@ public final class ArchiveBridge implements AutoCloseable {
             .errorHandler(this::onError);
     }
 
-    private void onError(Throwable error) { failure.compareAndSet(null, error); }
+    private void onError(Throwable error) {
+        if (!diagnostics.offer(error.toString())) droppedDiagnostics.incrementAndGet();
+        // Released Aeron categorizes WARN as handled/being handled. Preserve it
+        // without declaring the worker dead; ERROR/FATAL/unknown remain failures.
+        if (!(error instanceof AeronException aeronError && aeronError.category() == AeronException.Category.WARN))
+            failure.compareAndSet(null, error);
+    }
     private void check() {
         if (closed) throw new IllegalStateException("Archive closed");
         Throwable error = failure.get();
@@ -157,6 +166,8 @@ public final class ArchiveBridge implements AutoCloseable {
     public int fileSyncLevel() { return server.context().fileSyncLevel(); }
     public int catalogSyncLevel() { return server.context().catalogFileSyncLevel(); }
     public String failure() { Throwable error = failure.get(); return error == null ? "" : error.toString(); }
+    public String diagnostic() { String next = diagnostics.poll(); return next == null ? "" : next; }
+    public long droppedDiagnostics() { return droppedDiagnostics.get(); }
     public synchronized int openChildren() { return children.size(); }
     public synchronized int leakedChildren() { return leakedChildren; }
 

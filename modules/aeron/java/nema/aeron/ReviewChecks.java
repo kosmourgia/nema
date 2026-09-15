@@ -2,6 +2,7 @@ package nema.aeron;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import io.aeron.exceptions.AeronException;
 
 /** Focused independent regression probe for Archive ownership/control isolation. */
 public final class ReviewChecks {
@@ -32,6 +33,17 @@ public final class ReviewChecks {
             } finally { Files.move(saved, catalog); }
             try (ArchiveBridge restored = ArchiveBridge.openOwned(driverDirectory, storage.toString(), 81001, 65536, 0)) {
                 if (restored.archiveId() != 81001) throw new AssertionError("restored identity changed");
+                var errorHandler = ArchiveBridge.class.getDeclaredMethod("onError", Throwable.class);
+                errorHandler.setAccessible(true);
+                errorHandler.invoke(restored, new AeronException("review warning", AeronException.Category.WARN));
+                boolean sawWarning = false;
+                String diagnostic;
+                while (!(diagnostic = restored.diagnostic()).isEmpty())
+                    sawWarning |= diagnostic.contains("review warning");
+                if (!restored.failure().isEmpty() || !sawWarning)
+                    throw new AssertionError("warning must remain inspectable without becoming worker failure: " + restored.failure());
+                errorHandler.invoke(restored, new AeronException("review failure", AeronException.Category.ERROR));
+                if (!restored.failure().contains("review failure")) throw new AssertionError("error must fail worker state");
             }
         }
         System.out.println("PASS Archive control isolation, missing catalog rejects incarnation reuse, restored pair reopens run=" + run);

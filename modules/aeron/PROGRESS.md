@@ -4,11 +4,11 @@ Starting SHA: `ac48adfeeff37953d9d1688b54d3339de217e69b`.
 Branch: `codex/flix-aeron`; isolated worktree under `.nema/worktrees/aeron`.
 Scope: `modules/aeron/**` only. Independent of Vivarium and zygon.
 
-## In progress
+## Initial inspection (completed)
 
 - Read repository handoff, architecture, progress, configuration, and Flix probes.
 - Runtime observed: Flix 0.75.3; default OpenJDK 26.0.2.1; native Arch ARM.
-- Investigating released Aeron 1.53.1 source and building independent module.
+- Inspected released Aeron 1.53.1 source and built the independent module.
 - Parallel ownership: transport bridge, Archive bridge, main Flix integration.
 - Sibling worktree relocated into writable ignored `.nema/worktrees/aeron`.
 
@@ -93,7 +93,27 @@ Rescue validation so far:
 - Reviewed control/identity regression passes, including refusing a missing
   established catalog. Compiler capability probes pass with exact diagnostics.
 
-Full final module verification is being recorded under module `.nema/evidence`.
+## Slice 3: final functional acceptance (15 September 2026)
+
+`modules/aeron/scripts/verify.sh` completed with **exit 0 / AERON_VERIFY_PASS**.
+All eight stages passed: independent build, 13 Flix tests, native transport,
+Archive/reliability, reviewed invariants, 95 sink assertions, independent UDP
+process interoperability, and the two-process persistence handoff. Raw report:
+`.nema/evidence/verify.9euyXl`; combined log:
+`.nema/evidence/rescue-full-verify-complete.log`.
+
+The final handoff `handoff.yeP9mB` recovered end 174592, satisfied a newly attached
+late subscriber, purged two segments to catalog start 131072, and found old bytes
+in the external sink. A second recovery against that already-purged storage also
+passed and correctly purged zero additional segments. WARN diagnostics are
+retained in a bounded queue; ERROR/FATAL/unknown failures remain fatal to Archive
+operation. The regression tests cover both categories. Initial rerun failures and
+their evidence limitations are disclosed in `docs/acceptance.md`.
+
+Integration checkpoint `6f4c60e` was pushed to `origin/codex/flix-aeron` before this
+final validation. This acceptance slice is committed/pushed on the same branch;
+no merge or root-file edit is part of delivery.
+
 Release remains **blocked for a final disk-backed rerun**. After the VM storage is
 repaired, resume from the pushed branch in a dedicated worktree and run
 `modules/aeron/scripts/verify.sh`, `modules/aeron/scripts/probes.sh`, and existing

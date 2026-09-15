@@ -174,7 +174,7 @@ public final class ArchiveChecks {
                 }
                 archive.stopRecording(registration);
                 require(archive.openChildren() == 0, "child handles closed");
-                require(archive.failure().isEmpty(), "Archive worker healthy");
+                    require(archive.failure().isEmpty(), "Archive worker healthy: " + archive.failure());
             }
             try (ArchiveBridge archive = ArchiveBridge.openOwned(driverDirectory, archiveDirectory, 71001, 65536, 2)) {
                 require(archive.incarnation().equals(identity), "incarnation retained across restart");

@@ -66,15 +66,18 @@ and `withPublication` scopes, as in `Examples.ipcRoundTrip`. Low-level
 types. A recording key includes its retained Archive identity/incarnation.
 Integer coordinates cross Java interop only after explicit unwrapping.
 Handles wrap Java objects with private acquisition constructors; they are not
-integer table indexes. Flix does not enforce affine ownership: a returned handle
-is closed after its enclosing scope, and subsequent operations report closure.
+integer table indexes. Flix does not enforce affine ownership: the native resource
+is closed after its enclosing scope, and use after scope is unsupported. In
+particular, a closed subscription's poll returns zero and its owned queue can
+still be drained; not every accessor throws a closure error.
 
 Publication outcomes remain distinct: `Accepted(Position)`, `Backpressured`,
 `NotConnected`, `AdministrativeRetry`, `Closed`, `PositionExhausted`, and a
 retained `UnknownNative(code)` for unexpected future codes. Accepted is a local
 publication-log append, not an Archive or durable-sink acknowledgment. Native
-errors preserve their class/message in `Failure.Native`; timeout and cooperative
-Stop are `Failure.Deadline` and `Failure.Cancelled`.
+errors preserve their class/message in `Failure.Native`, including native
+driver/Archive timeouts. Wrapper deadline expiry and cooperative Stop are
+`Failure.Deadline` and `Failure.Cancelled`.
 
 `Message` contains an immutable vector of owned bytes and `NativeHeader`:
 session, stream, start/end, source identity, term ID/offset, flags, reserved value,
@@ -171,8 +174,8 @@ power-loss or storage-controller failure.
 
 ## Integration without parallel workstream changes
 
-Keep this independent module optional. A future host build can include its
-`src/Nema/Aeron*.flix` tree plus the generated Java bridge and pinned Aeron jar;
+Keep this independent module optional. A future host build can include
+`src/Nema/Aeron.flix` and `src/Nema/Aeron/` plus the generated Java bridge and pinned Aeron jar;
 reuse the host's existing empty `Nema` namespace instead of copying module
 `src/Nema.flix` or `src/Main.flix`. Install real/fixture handlers at the caller's
 scope and pass opaque payloads plus source-native metadata. Use explicit Stop

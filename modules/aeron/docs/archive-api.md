@@ -158,6 +158,14 @@ staging. The polling owner should be cooperatively stopped before scope teardown
 reclaims leaked readers. Native worker failures are retained in `failure()` and
 subsequent operations fail with the original cause. Persistent transient error
 text is distinct from its terminal `hasFailed()` state.
+The released `AeronException.Category.WARN` denotes a condition being handled;
+it remains in a bounded 64-entry diagnostic queue without declaring a worker
+dead. `ERROR`, `FATAL`, and unknown throwables remain failures. The overflow count
+is exposed separately. `ReviewChecks` injects both categories and checks this
+distinction. An initial combined verification failed a health assertion after
+intentional replay cancellation; that assertion omitted the cause, so its cause
+is not established. The immediate rerun passed. The assertion now includes the
+cause; warning classification is independently grounded in the released API.
 
 Archive close waits, with a three-second bound, for its native driver counter
 removal before permitting immediate reopen with the same Archive ID. This fixed

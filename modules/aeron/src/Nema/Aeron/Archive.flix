@@ -42,6 +42,8 @@ pub mod Nema.Aeron.Archive {
     pub def syncPolicy(a: Archive): SyncPolicy \ IO = {
         let Archive(j) = a; { fileSyncLevel = j.fileSyncLevel(), catalogSyncLevel = j.catalogSyncLevel() }
     }
+    pub def diagnostic(a: Archive): String \ IO = let Archive(j) = a; j.diagnostic()
+    pub def droppedDiagnostics(a: Archive): Int64 \ IO = let Archive(j) = a; j.droppedDiagnostics()
     pub def startRecording(a: Archive, uri: ChannelUri, stream: StreamId): Result[Failure, Registration] \ IO = {
         let Archive(j) = a; let ChannelUri(u) = uri; let StreamId(s) = stream;
         Aeron.attempt(_ -> Registration(identity(a), j.startRecording(u, s)))
