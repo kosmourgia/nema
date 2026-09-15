@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -127,7 +128,8 @@ async def run(args):
             command = args.child or None
             if command and command[0] == '--':
                 command = command[1:]
-            owned = await OwnedProcess.launch(client, args.runtime / 'processes', command,
+            process_key = hashlib.sha256(args.name.encode()).hexdigest()[:12]
+            owned = await OwnedProcess.launch(client, args.runtime / 'processes' / process_key, command,
                 participant_id=args.name, mode=args.mode, cooperative=command is None)
             show({'host': owned.ref, 'surfaces': owned.surfaces})
             stop = asyncio.create_task(stopped())
@@ -139,9 +141,12 @@ async def run(args):
                 await asyncio.gather(stop, return_exceptions=True)
                 await owned.close()
                 await exited
+            code = owned.process.returncode or 0
+            return 74 if owned.spool.failure else (128 - code if code < 0 else code)
         elif args.command == 'attach':
             from .attached import AttachedCompanion
-            attached = await AttachedCompanion.attach(client, args.endpoint, args.runtime / 'attachments')
+            endpoint_key = hashlib.sha256(str(args.endpoint.resolve()).encode()).hexdigest()[:12]
+            attached = await AttachedCompanion.attach(client, args.endpoint, args.runtime / 'attachments' / endpoint_key)
             try:
                 show({'attached': attached.ref, 'note': 'SIGINT detaches; external host remains alive'})
                 await stopped(args.duration)
@@ -187,13 +192,13 @@ def main():
             result = subprocess.call([sys.executable, '-m', 'unittest', 'discover', '-s', str(MODULE / 'tests'), '-v'], env=env)
         return result or subprocess.call([str(MODULE / 'flix' / 'run'), 'test' if args.command == 'test' else 'check'], env=env)
     try:
-        asyncio.run(run(args))
+        result = asyncio.run(run(args))
     except KeyboardInterrupt:
         return 130
     except (ProtocolError, OSError, TimeoutError) as e:
         print(str(e), file=sys.stderr)
         return 1
-    return 0
+    return result if isinstance(result, int) else 0
 
 
 if __name__ == '__main__':

@@ -1,8 +1,8 @@
-import zygon.flix.Bridge
-import zygon.flix.{Bridge$Doc => Doc}
-import java.lang.Exception
-
 pub mod Zygon {
+    import zygon.flix.Bridge
+    import zygon.flix.{Bridge$Doc => Doc}
+    import java.lang.Exception
+    import java.io.IOException
     pub type alias Identity = { id = String, incarnation = String }
     pub type alias Registration = {
         identity = Identity, kind = String, medium = String, mode = String,
@@ -44,6 +44,10 @@ pub mod Zygon {
     pub enum Event {
         case Observed(Observation)
         case Resolved(Result)
+    }
+    pub enum Start {
+        case Ready(Invocation)
+        case Rejected(String)
     }
     pub eff LocalRequest { def invoke(request: Request): Result }
 
@@ -140,16 +144,20 @@ pub mod Zygon {
     }
     /// The effect handler lives inside this spawned worker. Its continuation
     /// waits on one CSP channel while observations use a separate channel.
-    def requestWorker(control: Bridge, request: Request, accepted: Sender[Invocation],
+    def requestWorker(control: Bridge, request: Request, accepted: Sender[Start],
                       reply: Receiver[Result], events: Sender[Event]): Unit \ {IO, Chan, NonDet} =
-        run { Channel.send(Event.Resolved(LocalRequest.invoke(request)), events) }
-        with handler LocalRequest {
-            def invoke(r, resume) = {
-                let doc = control.invoke(r#requester#id, r#requester#incarnation,
-                    r#target#id, r#target#incarnation, r#operation, r#arguments, r#correlation);
-                Channel.send(invocation(doc), accepted);
-                resume(Channel.recv(reply))
+        try {
+            run { Channel.send(Event.Resolved(LocalRequest.invoke(request)), events) }
+            with handler LocalRequest {
+                def invoke(r, resume) = {
+                    let doc = control.invoke(r#requester#id, r#requester#incarnation,
+                        r#target#id, r#target#incarnation, r#operation, r#arguments, r#correlation);
+                    Channel.send(Start.Ready(invocation(doc)), accepted);
+                    resume(Channel.recv(reply))
+                }
             }
+        } catch {
+            case error: Exception => Channel.send(Start.Rejected(error.getMessage()), accepted)
         }
     def scanPage(page: Doc, index: Int32, callId: String, acceptedSeen: Bool,
                  replies: Sender[Result], events: Sender[Event]): (Bool, Bool) \ {IO, Chan, NonDet} =
@@ -157,7 +165,7 @@ pub mod Zygon {
             let record = page.item("records", index);
             let kind = record.string("kind");
             let body = record.object("body");
-            let isCall = String.startsWith("invocation.", kind) and body.has("id") and body.string("id") == callId;
+            let isCall = String.startsWith(prefix = "invocation.", kind) and body.has("id") and body.string("id") == callId;
             if (isCall and body.has("status") and terminal(status(body.string("status")))) {
                 Channel.send(result(body, record.string("id")), replies);
                 (true, acceptedSeen)
@@ -178,6 +186,16 @@ pub mod Zygon {
             watch(observer, page.string("cursor"), callId, seen, replies, events)
         }
     }
+    def observeWorker(observer: Bridge, cursor: String, call: Invocation,
+                      replies: Sender[Result], events: Sender[Event]): Unit \ {IO, Chan, NonDet} =
+        try { watch(observer, cursor, call#id, false, replies, events) }
+        catch {
+            case error: Exception => Channel.send({
+                invocationId = call#id, correlation = call#correlation,
+                status = Status.OutcomeUnknown, value = Bridge.errorJson(error.getMessage()),
+                recordId = "", raw = ""
+            }, replies)
+        }
     def consume(events: Receiver[Event], observations: Int32): (Result, Int32) \ {IO, Chan, NonDet} =
         match Channel.recv(events) {
             case Event.Observed(o) =>
@@ -190,11 +208,15 @@ pub mod Zygon {
         let (replyTx, replyRx) = Channel.unbuffered();
         let (eventTx, eventRx) = Channel.unbuffered();
         spawn requestWorker(control, request, acceptedTx, replyRx, eventTx) @ rc;
-        let accepted = Channel.recv(acceptedRx);
-        println("FLIX accepted id=${accepted#id} correlation=${accepted#correlation} status=${accepted#status}");
-        printTopology("waiting", snapshot(control.inspect()));
-        spawn watch(observer, before#cursor, accepted#id, false, replyTx, eventTx) @ rc;
-        consume(eventRx, 0)
+        match Channel.recv(acceptedRx) {
+            case Start.Rejected(message) => throw new IOException(message)
+            case Start.Ready(accepted) =>
+                println("FLIX accepted id=${accepted#id} correlation=${accepted#correlation} status=${accepted#status}");
+                try { printTopology("waiting", snapshot(control.inspect())) }
+                catch { case error: Exception => println("FLIX waiting snapshot unavailable: ${error.getMessage()}") };
+                spawn observeWorker(observer, before#cursor, accepted, replyTx, eventTx) @ rc;
+                consume(eventRx, 0)
+        }
     }
     pub def main(): Unit \ {IO, Chan, NonDet} = {
         let socket = Bridge.environment("ZYGON_SOCKET", "");

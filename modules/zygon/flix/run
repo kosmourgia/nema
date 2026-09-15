@@ -3,12 +3,27 @@ set -eu
 zygon_flix_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$zygon_flix_root"
 zygon_flix_jar=${FLIX_JAR:-/usr/share/java/flix/flix.jar}
-mkdir -p .nema/classes lib
-javac -J-Xmx256m -cp "$zygon_flix_jar" -d .nema/classes java/zygon/flix/Bridge.java
-jar --create --file lib/zygon-bridge.jar -C .nema/classes .
-case "${1:-run}" in
-  build|test|run) zygon_command=${1:-run} ;;
-  *) echo "usage: $0 [build|test|run]" >&2; exit 2 ;;
+zygon_compiler_version=$(java -Xmx256m -jar "$zygon_flix_jar" --version)
+case "$zygon_compiler_version" in
+  *"0.75.3"*) ;;
+  *) echo "Expected Flix 0.75.3 from flix.toml; found $zygon_compiler_version" >&2; exit 2 ;;
 esac
-exec java -Xmx1200m -Xss1m -cp "$zygon_flix_jar:lib/zygon-bridge.jar" \
-  ca.uwaterloo.flix.Main "$zygon_command" --no-install --threads 2
+mkdir -p .nema
+zygon_build_dir=$(mktemp -d "$zygon_flix_root/.nema/b-XXXXXX")
+mkdir -p "$zygon_build_dir/classes" "$zygon_build_dir/src" "$zygon_build_dir/lib/external" "$zygon_build_dir/test"
+javac -J-Xmx256m -cp "$zygon_flix_jar" -d "$zygon_build_dir/classes" java/zygon/flix/Bridge.java
+# The observed pinned compiler includes Gson. Its external-JAR classloader is
+# isolated, so place those existing codec classes in this local build artifact.
+cd "$zygon_build_dir/classes"
+jar --extract --file "$zygon_flix_jar" com/google/gson
+cd "$zygon_flix_root"
+jar --create --file "$zygon_build_dir/lib/external/zygon-bridge.jar" -C "$zygon_build_dir/classes" .
+cp src/*.flix "$zygon_build_dir/src/"
+if [ -d test ]; then cp test/*.flix "$zygon_build_dir/test/"; fi
+case "${1:-run}" in
+  build|check|test|run) zygon_command=${1:-run} ;;
+  *) echo "usage: $0 [build|check|test|run]" >&2; exit 2 ;;
+esac
+cd "$zygon_build_dir"
+exec java -Xmx1200m -Xss1m -jar "$zygon_flix_jar" \
+  "$zygon_command" --no-install --threads 2

@@ -91,6 +91,10 @@ class Server:
                 try:
                     payload = await reader.readline()
                 except (ValueError, asyncio.LimitOverrunError):
+                    with self.registry.db:
+                        self.registry.record('protocol.capture-gap', {
+                            'peer': peer.id, 'reason': 'frame exceeds 65536 byte bound',
+                            'unavailableBytes': None, 'action': 'close-connection'})
                     peer.send({'version': 1, 'id': None, 'error': {'code': 'frame-too-large', 'message': '65536 byte limit'}})
                     await asyncio.sleep(0)
                     break
@@ -131,7 +135,9 @@ class Server:
     async def close(self):
         if self.listener:
             self.listener.close()
-            await self.listener.wait_closed()
+            # Python 3.14 wait_closed includes active transports. Close clients
+            # first, including a transport whose accept callback is scheduled.
+            self.listener.close_clients()
         if self.timer:
             self.timer.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -140,6 +146,9 @@ class Server:
             peer.writer.close()
         if self.tasks:
             await asyncio.gather(*list(self.tasks), return_exceptions=True)
+        if self.listener:
+            await self.listener.wait_closed()
+            self.listener = None
         if self.registry:
             self.registry.close()
             self.registry = None

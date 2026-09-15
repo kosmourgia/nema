@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nema.lab.record/v1",
+  "title": "Zygon exported retained diagnostic record",
+  "type": "object",
+  "required": ["schema", "id", "source", "incarnation", "seq", "kind", "parents", "body"],
+  "properties": {
+    "schema": {"const": "nema.lab.record/v1"},
+    "id": {"type": "string"},
+    "source": {"type": "string"},
+    "incarnation": {"type": "string"},
+    "seq": {"type": "string", "pattern": "^[0-9]+$"},
+    "kind": {"type": "string"},
+    "parents": {"type": "array", "items": {"type": "string"}},
+    "body": {"type": "object"}
+  },
+  "additionalProperties": true
+}

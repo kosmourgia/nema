@@ -37,6 +37,13 @@ public final class Bridge implements AutoCloseable {
         return value == null ? fallback : value;
     }
     public static String fresh(String prefix) { return prefix + UUID.randomUUID(); }
+    public static String errorJson(String message) {
+        JsonObject value = new JsonObject();
+        value.addProperty("reason", "local-transport-error");
+        value.addProperty("message", message);
+        value.addProperty("retainedTerminalEstablished", false);
+        return value.toString();
+    }
     public static void pause() throws InterruptedException { Thread.sleep(20); }
     public static void require(boolean condition, String message) throws IOException {
         if (!condition) throw new IOException(message);

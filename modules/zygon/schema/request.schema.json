@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nema.zygon.request/v1",
+  "title": "Zygon NDJSON request (maximum encoded frame 65536 bytes including LF)",
+  "type": "object",
+  "required": ["version", "id", "method", "params"],
+  "properties": {
+    "version": {"const": 1},
+    "id": {"type": "string", "minLength": 1, "maxLength": 512},
+    "method": {"enum": ["register", "update", "unregister", "inspect", "subscribe", "invoke", "result", "cancel", "observe"]},
+    "params": {"type": "object"}
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "reference": {
+      "type": "object", "required": ["id", "incarnation"],
+      "properties": {"id": {"type": "string"}, "incarnation": {"type": "string"}},
+      "additionalProperties": true
+    },
+    "registration": {
+      "type": "object", "required": ["id", "incarnation", "kind", "medium", "mode", "operations", "parent"],
+      "properties": {
+        "id": {"type": "string"}, "incarnation": {"type": "string"},
+        "kind": {"type": "string"}, "medium": {"type": "string"},
+        "mode": {"enum": ["owned", "attached", "observer"]},
+        "operations": {"type": "array", "maxItems": 32, "items": {"type": "string"}},
+        "parent": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/reference"}]}
+      },
+      "additionalProperties": true
+    }
+  }
+}
