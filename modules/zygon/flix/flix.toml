@@ -1,0 +1,6 @@
+[package]
+name = "nema-zygon-client"
+description = "A typed Flix effect, CSP and Datalog participant for the zygon experiment."
+version = "0.0.1"
+flix = "0.75.3"
+authors = ["Nema contributors"]

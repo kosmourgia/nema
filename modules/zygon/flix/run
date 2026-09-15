@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+zygon_flix_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$zygon_flix_root"
+zygon_flix_jar=${FLIX_JAR:-/usr/share/java/flix/flix.jar}
+mkdir -p .nema/classes lib
+javac -J-Xmx256m -cp "$zygon_flix_jar" -d .nema/classes java/zygon/flix/Bridge.java
+jar --create --file lib/zygon-bridge.jar -C .nema/classes .
+case "${1:-run}" in
+  build|test|run) zygon_command=${1:-run} ;;
+  *) echo "usage: $0 [build|test|run]" >&2; exit 2 ;;
+esac
+exec java -Xmx1200m -Xss1m -cp "$zygon_flix_jar:lib/zygon-bridge.jar" \
+  ca.uwaterloo.flix.Main "$zygon_command" --no-install --threads 2

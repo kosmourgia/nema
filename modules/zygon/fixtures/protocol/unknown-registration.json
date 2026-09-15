@@ -1,0 +1,7 @@
+{
+  "id": "fixture-host", "incarnation": "fixture-incarnation-1", "kind": "host",
+  "medium": "cooperative-test-endpoint", "mode": "attached", "parent": null,
+  "operations": ["fixture.echo"],
+  "metadata": {"pid": 4242, "terminalEmulatorTab": null, "sourceNative": {"futureFlag": [false, null, 17]}},
+  "vendor.future": {"nested": ["retained", {"value": "λ"}]}
+}
