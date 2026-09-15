@@ -70,6 +70,10 @@ public final class ArchiveChecks {
 
     public static void main(String[] args) throws Exception {
         if (args.length == 2 && args[0].equals("crash-child")) { crashChild(Path.of(args[1])); return; }
+        ArchiveBridge.Descriptor offsetRecording = new ArchiveBridge.Descriptor("fixture", 1, 65664,
+            -1, 3, 131072, 65536, 1408, 1, STREAM, CHANNEL, "fixture");
+        require(offsetRecording.segmentBase(196608) == 196608,
+            "segment base must account for nonzero recording start term (naive division gives 131072)");
         Path root = args.length == 0 ? Path.of(System.getenv("NEMA_AERON_RUN")) : Path.of(args[0]);
         Files.createDirectories(root);
         Path run = Files.createTempDirectory(root, "archive-");
@@ -94,6 +98,22 @@ public final class ArchiveChecks {
             String identity;
             try (ArchiveBridge archive = ArchiveBridge.openOwned(driverDirectory, archiveDirectory, 71001, 65536, 2)) {
                 identity = archive.incarnation();
+                long beforeFds;
+                try (var fds = Files.list(Path.of("/proc/self/fd"))) { beforeFds = fds.count(); }
+                for (int attempt = 0; attempt < 20; attempt++) {
+                    try (ArchiveBridge duplicate = ArchiveBridge.openOwned(driverDirectory, archiveDirectory, 71001, 65536, 2)) {
+                        throw new AssertionError("same Archive directory acquired twice");
+                    } catch (IllegalStateException correct) { }
+                    try (ArchiveBridge duplicate = ArchiveBridge.openOwned(driverDirectory,
+                        run.resolve("rejected-archive-" + attempt).toString(), 71002, 65536, 2)) {
+                        throw new AssertionError("same driver control streams acquired twice");
+                    } catch (IllegalStateException correct) { }
+                }
+                try (var fds = Files.list(Path.of("/proc/self/fd"))) {
+                    require(fds.count() <= beforeFds + 2, "failed lock acquisition leaked file descriptors");
+                }
+                require(archive.archiveId() == 71001, "native Archive identity verified");
+                System.out.println("PASS same-storage/same-driver owner rejection; repeated lock failure has no fd leak");
                 long registration = archive.startRecording(CHANNEL, STREAM);
                 try (ExclusivePublication publication = producer.addExclusivePublication(CHANNEL, STREAM)) {
                     session = publication.sessionId();
@@ -125,11 +145,32 @@ public final class ArchiveChecks {
                         cancelled.close(); require(cancelled.isClosed(), "replay cancellation");
                     }
                     System.out.println("PASS recording/list/progress/binary/UTF-8/fragmentation/queue ABORT/ranges/cancel");
-                    persistent(archive, publication, recording, expected);
+                    // An unrelated publisher on the same stream must never enter this recording's live reader.
+                    try (ExclusivePublication otherSession = producer.addExclusivePublication(CHANNEL, STREAM)) {
+                        until(otherSession::isConnected, "second source session connected");
+                        byte[] otherBytes = "other-publication-session".getBytes(StandardCharsets.UTF_8);
+                        long otherEnd = offer(otherSession, otherBytes);
+                        until(() -> archive.findRecording("", STREAM, otherSession.sessionId()) >= 0,
+                            "second source recording descriptor");
+                        long otherRecording = archive.findRecording("", STREAM, otherSession.sessionId());
+                        require(otherRecording != recording, "distinct sessions have distinct recording ids");
+                        until(() -> archive.progress(otherRecording) >= otherEnd, "second source recorded");
+                        try (ArchiveBridge.Replay replay = archive.replay(otherRecording, 0, otherEnd, 849, 1)) {
+                            same(List.of(otherBytes), drain(replay), otherSession.sessionId());
+                        }
+                        persistent(archive, publication, recording, expected);
+                    }
+                    System.out.println("PASS multiple publication sessions retain distinct recordings and live attribution");
                     end = publication.position();
                     long stoppedEnd = end;
                     until(() -> archive.progress(recordingFinal) >= stoppedEnd, "recorded before stop");
                     prematureReplay(archive, recording, end, driverDirectory);
+                    try (ArchiveBridge.Persistent cancelled = archive.persistent(recording, -1,
+                        CHANNEL + "|tether=false", STREAM, 851, 1)) {
+                        until(() -> { cancelled.poll(16); return cancelled.queued() == 1; }, "persistent replay before cancellation");
+                        cancelled.close();
+                        require(cancelled.isClosed(), "persistent replay cancelled while staging full");
+                    }
                 }
                 archive.stopRecording(registration);
                 require(archive.openChildren() == 0, "child handles closed");
@@ -144,6 +185,16 @@ public final class ArchiveChecks {
                     replayed = drain(replay);
                 }
                 same(expected, replayed, session);
+                long preceding = 0;
+                int paddingGaps = 0;
+                for (Transport.Message message : replayed) {
+                    require(archive.paddingOnly(recording, preceding, message.startPosition), "gap contains only actual PAD frames");
+                    if (preceding < message.startPosition) paddingGaps++;
+                    require(!archive.paddingOnly(recording, message.startPosition, message.endPosition), "DATA never counts as padding");
+                    preceding = message.endPosition;
+                }
+                require(paddingGaps > 0, "actual term padding exercised");
+                System.out.println("PASS retained gap validation distinguishes PAD from missing DATA; gaps=" + paddingGaps);
                 long pin = 0;
                 require(archive.safePurgePosition(recording, end, pin) == 0, "external replay pin prevents purge");
                 require(archive.purgeSegments(recording, end, pin) == 0, "pin retains source bytes");

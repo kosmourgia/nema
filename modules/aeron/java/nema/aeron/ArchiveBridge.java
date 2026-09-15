@@ -42,8 +42,8 @@ public final class ArchiveBridge implements AutoCloseable {
     private static final String IPC = "aeron:ipc?term-length=65536";
     private final String driverDirectory;
     private final Path storage;
-    private final FileChannel lockChannel;
-    private final FileLock storageLock;
+    private final LockLease storageLease;
+    private final LockLease driverLease;
     private final Archive server;
     private final AeronArchive client;
     private final String incarnation;
@@ -58,14 +58,16 @@ public final class ArchiveBridge implements AutoCloseable {
         this.driverDirectory = driverDirectory;
         this.storage = storage.toAbsolutePath();
         Files.createDirectories(this.storage);
-        lockChannel = FileChannel.open(this.storage.resolve("nema-owner.lock"),
-            StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-        storageLock = lockChannel.tryLock();
-        if (storageLock == null) { lockChannel.close(); throw new IllegalStateException("Archive directory in use"); }
+        storageLease = LockLease.acquire(this.storage.resolve("nema-owner.lock"));
+        LockLease openedDriverLease = null;
         Archive openedServer = null;
         AeronArchive openedClient = null;
         try {
+            openedDriverLease = LockLease.acquire(Path.of(driverDirectory).resolve("nema-archive-owner.lock"));
+            driverLease = openedDriverLease;
             Path identityFile = this.storage.resolve("nema-incarnation");
+            if (Files.exists(identityFile) && !Files.exists(this.storage.resolve("archive.catalog")))
+                throw new IllegalStateException("Retained incarnation has no catalog; refuse recording ID reuse");
             if (!Files.exists(identityFile)) {
                 if (Files.exists(this.storage.resolve("archive.catalog")))
                     throw new IllegalStateException("Existing catalog has no Nema incarnation: explicit adoption required");
@@ -92,14 +94,40 @@ public final class ArchiveBridge implements AutoCloseable {
                 .idleStrategySupplier(() -> new SleepingMillisIdleStrategy(1))
                 .errorHandler(this::onError));
             openedClient = AeronArchive.connect(context());
+            if (openedClient.archiveId() != archiveId)
+                throw new IllegalStateException("Connected to unexpected Archive id " + openedClient.archiveId());
             server = openedServer;
             client = openedClient;
         } catch (Throwable error) {
-            if (openedClient != null) openedClient.close();
-            if (openedServer != null) openedServer.close();
-            storageLock.close();
-            lockChannel.close();
+            closeAfterFailure(openedClient, error);
+            closeAfterFailure(openedServer, error);
+            closeAfterFailure(openedDriverLease, error);
+            closeAfterFailure(storageLease, error);
             throw error;
+        }
+    }
+
+    private static void closeAfterFailure(AutoCloseable resource, Throwable original) {
+        if (resource != null) {
+            try { resource.close(); } catch (Throwable cleanup) { original.addSuppressed(cleanup); }
+        }
+    }
+
+    /** Closing acquisition failures matters: overlapping JVM locks throw rather than returning null. */
+    private record LockLease(FileChannel channel, FileLock lock) implements AutoCloseable {
+        static LockLease acquire(Path path) throws IOException {
+            FileChannel channel = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            try {
+                FileLock lock = channel.tryLock();
+                if (lock == null) throw new IllegalStateException("Archive owner already holds " + path);
+                return new LockLease(channel, lock);
+            } catch (Throwable error) {
+                closeAfterFailure(channel, error);
+                throw error;
+            }
+        }
+        public void close() throws IOException {
+            try { lock.close(); } finally { channel.close(); }
         }
     }
 
@@ -204,6 +232,33 @@ public final class ArchiveBridge implements AutoCloseable {
         } catch (IOException error) { throw new IllegalStateException("Cannot inspect retained range", error); }
     }
 
+    /** Prove a source-coordinate gap consists only of complete recorded PAD frames, never unseen application data. */
+    public synchronized boolean paddingOnly(long recordingId, long from, long to) {
+        check();
+        Descriptor descriptor = descriptor(recordingId);
+        validateRange(descriptor, from, to);
+        long cursor = from;
+        ByteBuffer header = ByteBuffer.allocate(32).order(ByteOrder.LITTLE_ENDIAN);
+        while (cursor < to) {
+            long base = descriptor.segmentBase(cursor);
+            Path segment = storage.resolve(recordingId + "-" + base + ".rec");
+            header.clear();
+            try (FileChannel file = FileChannel.open(segment, StandardOpenOption.READ)) {
+                while (header.hasRemaining()) {
+                    int count = file.read(header, cursor - base + header.position());
+                    if (count < 0) throw new IllegalArgumentException("Padding range has no retained header");
+                }
+            } catch (IOException error) { throw new IllegalStateException("Cannot inspect retained padding", error); }
+            int length = header.getInt(0);
+            int type = Short.toUnsignedInt(header.getShort(6));
+            if (length < 32 || type != 0) return false;
+            long next = cursor + (((long)length + 31) & ~31L);
+            if (next > to) return false;
+            cursor = next;
+        }
+        return true;
+    }
+
     public synchronized Replay replay(long recordingId, long start, long end, int stream, int capacity) {
         check();
         Descriptor d = descriptor(recordingId);
@@ -271,7 +326,8 @@ public final class ArchiveBridge implements AutoCloseable {
             }
         } catch (Throwable error) { if (first == null) first = error; }
         try { client.close(); } catch (Throwable error) { if (first == null) first = error; }
-        try { storageLock.close(); lockChannel.close(); } catch (Throwable error) { if (first == null) first = error; }
+        try { driverLease.close(); } catch (Throwable error) { if (first == null) first = error; }
+        try { storageLease.close(); } catch (Throwable error) { if (first == null) first = error; }
         if (first != null) throw new IllegalStateException("Archive close failed", first);
     }
 
@@ -355,7 +411,12 @@ public final class ArchiveBridge implements AutoCloseable {
             if (start == end) { replayId = -1; subscription = null; complete = true; }
             else {
                 replayId = parent.client.startReplay(descriptor.recordingId, start, end - start, IPC, stream);
-                subscription = parent.client.context().aeron().addSubscription(IPC + "|session-id=" + (int)replayId, stream);
+                try {
+                    subscription = parent.client.context().aeron().addSubscription(IPC + "|session-id=" + (int)replayId, stream);
+                } catch (Throwable error) {
+                    try { parent.client.stopReplay(replayId); } catch (Throwable cleanup) { error.addSuppressed(cleanup); }
+                    throw error;
+                }
             }
         }
         @Override public synchronized int poll(int fragmentLimit) {
@@ -382,9 +443,12 @@ public final class ArchiveBridge implements AutoCloseable {
         @Override public synchronized void close() {
             if (closed) return;
             closed = true;
-            if (subscription != null) subscription.close();
+            Throwable first = null;
+            try { if (subscription != null) subscription.close(); } catch (Throwable error) { first = error; }
             try { if (replayId != -1) parent.client.stopReplay(replayId); }
-            finally { queue.clear(); parent.released(this); }
+            catch (Throwable error) { if (first == null) first = error; else first.addSuppressed(error); }
+            finally { assembler.clear(); queue.clear(); parent.released(this); }
+            if (first != null) throw new IllegalStateException("Replay close failed", first);
         }
     }
 

@@ -17,15 +17,21 @@ These are opaque source bytes; no Nema ontology or clock is introduced here.
 owns an embedded Archive and its Archive clients. It **borrows** the existing
 Media Driver. Closing the Archive does not close that driver. Use one laboratory
 Archive per dedicated Media Driver: local IPC control streams 9100/9101 are scoped
-to that driver's unique directory. Recording/replay stream IDs remain caller
+to that driver's unique directory. A driver-directory ownership lock rejects a
+second owned Archive before opening its control subscriptions, and the connected
+client's native Archive ID must match the requested ID. Failed lock acquisitions
+close their file descriptors, including overlapping locks inside the same JVM.
+Recording/replay stream IDs remain caller
 choices inside that directory. Replication is not exposed; its mandatory native
 context URI uses loopback port zero rather than a fixed shared endpoint.
 
 The Archive catalog and segments remain in `storageDirectory` after close. A
 directory lock rejects concurrent owners. `nema-incarnation` stores a native
 Archive ID plus a random UUID, forces the file, and forces its directory. Reopen
-preserves the UUID. A preexisting catalog without this identity is rejected;
-adoption is not silently invented. Recording identity is the pair
+preserves the UUID. A preexisting catalog without this identity, or an identity
+without its established catalog, is rejected. An interrupted initial creation
+may therefore require explicit operator inspection; the wrapper never creates
+new recording IDs under an old incarnation. Adoption is not silently invented. Recording identity is the pair
 `(archive incarnation, recording ID)`, never the recording ID alone. Restore or
 copy the identity file together with its catalog and segments. Copying a catalog
 to create a *new independent* recording universe requires an explicit identity
@@ -41,6 +47,7 @@ Public operations:
 | `descriptor(id)`, `list(firstId, count)` | Retained start/stop, initial term ID, term/segment/MTU sizes, native session/stream/channel/source. Listing has an explicit count bound. |
 | `progress(id)` | `AeronArchive.getMaxRecordedPosition`: recorded byte coordinate for active or stopped recording. |
 | `replay(id, start, end, replayStream, capacity)` | Finite half-open byte range, bounded staging queue, caller-driven polling. |
+| `paddingOnly(id, from, to)` | Verifies an entire retained coordinate gap consists of complete PAD frames; DATA returns false. |
 | `persistent(id, start, liveChannel, liveStream, replayStream, capacity)` | Released PersistentSubscription with explicit start and session-filtered live channel. |
 | `safePurgePosition(id, satisfiedThrough, replayPin)` | Complete segment boundary no later than both supplied obligations and current recorded progress. |
 | `purgeSegments(id, satisfiedThrough, replayPin)` | Front reclamation at that boundary; open child readers add conservative pins. |
@@ -53,6 +60,18 @@ inside a fragmented application message. Empty ranges are complete immediately.
 Boundary inspection uses the observed 1.53.1 local `recordingId-basePosition.rec`
 layout; the filename helper is package-private. Remote Archive range inspection
 is not implemented.
+
+`Replay.complete()` requires observing the requested end position and draining
+staging. Premature EOS or disappearance of a previously connected replay sets
+`failureReason()` and throws; it cannot masquerade as successful finite replay.
+Any already received prefix remains a prefix, not a complete requested range.
+
+When application ranges skip term padding, `paddingOnly` lets Flix establish
+that the gap contains actual PAD frames. It validates the retained bounds and
+real aligned frame boundaries, then refuses any DATA frame. A caller may cover
+`[previousEnd, messageEnd)` only after satisfying the application's obligations
+for the message and verifying `[previousEnd, messageStart)` this way. A missing
+application message therefore cannot silently become acknowledged padding.
 
 The bounded reader calls `ControlledFragmentAssembler` exactly once. Its callback
 copies complete messages into owned `byte[]` values. A full queue returns ABORT
@@ -161,8 +180,12 @@ ordinary command approval for sockets; execution itself remains in the guest.
 Observed 15 September 2026, exit 0:
 
 ```text
+PASS same-storage/same-driver owner rejection; repeated lock failure has no fd leak
 PASS recording/list/progress/binary/UTF-8/fragmentation/queue ABORT/ranges/cancel
 PASS PersistentSubscription IPC replay/live/fall-behind/replay/live; joins=2 leaves=1
+PASS multiple publication sessions retain distinct recordings and live attribution
+PASS premature native replay stop reports failure rather than completion
+PASS retained gap validation distinguishes PAD from missing DATA; gaps=6
 PASS Archive restart/identity/retained replay/pins/front purge/pruned rejection; purged=6
 PASS abrupt process halt(91)/Archive recovery/replay with syncLevel=2; power-loss claim excluded
 PASS Archive checks
@@ -176,3 +199,28 @@ replay retained bytes and the same incarnation. This proves the tested process
 crash/restart path, **not** every power-loss, filesystem, controller, or storage
 failure. No remote durability, replication, consensus, or global ordering is
 claimed.
+
+The early-stop failure injection uses an independent native Archive control
+client to stop the replay while its bounded queue is full; the reader subsequently
+reports failure before the requested end. Lock testing performs forty rejected
+same-storage/same-driver acquisitions and checks `/proc/self/fd` for growth. A
+nonzero-start metadata check distinguishes the correct segment base (196608)
+from naive byte division (131072). The full run also validates six actual term
+padding gaps and rejects every application DATA range as padding.
+An independent second publication session runs on the same stream during the
+persistent test; its bytes replay from a distinct recording and never enter the
+first session's replay/live reader. A second persistent reader is cancelled while
+its initial replay staging queue is full.
+That cancellation can leave a final native response with no listening client;
+one run retained `ArchiveEvent: WARN - control response publication is not
+connected` for a `ControlSession` already in `DONE`. The Archive preserved the
+raw diagnostic in its worktree-local `archive-...-error.log` on reopen; the bounded
+close/reopen/replay checks still passed. This warning is distinguished from a
+terminal worker failure and is not discarded from retained runtime evidence.
+
+One rerun during the interrupted guest session failed at native Media Driver
+startup with `java.io.IOException: Input/output error (msync with parameter
+MS_SYNC failed)` in `MediaDriver$Context.conclude`. The filesystem had 83 GB free;
+the cause was not established. Subsequent full runs passed without a code change
+to driver startup. This observation is retained as an environmental diagnostic,
+not attributed to Archive persistence or presented as a passing test.

@@ -2,6 +2,7 @@ use Nema.Aeron.{ArchiveIdentity, RecordingKey, Position}
 use Nema.Aeron.Retention
 use Nema.Aeron.ArchiveIdentity.ArchiveIdentity
 use Nema.Aeron.RecordingKey.RecordingKey
+use Nema.Aeron.RecordingId.RecordingId
 use Nema.Aeron.Position.Position
 use Nema.Aeron.Retention.Satisfied.Satisfied
 use Nema.Aeron.Retention.ReplayPin.ReplayPin
@@ -9,8 +10,8 @@ use Nema.Aeron.Retention.{Satisfied, ReplayPin, CapacityDecision}
 
 @Test
 def contiguousObligationsAndPins(): Unit \ Assert = {
-    let key = RecordingKey(ArchiveIdentity("archive-a/incarnation-a"), 7i64);
-    let other = RecordingKey(ArchiveIdentity("archive-a/incarnation-b"), 7i64);
+    let key = RecordingKey(ArchiveIdentity("archive-a/incarnation-a"), RecordingId(7i64));
+    let other = RecordingKey(ArchiveIdentity("archive-a/incarnation-b"), RecordingId(7i64));
     let ranges = Satisfied("a", key, Position(128i64), Position(192i64)) ::
         Satisfied("a", key, Position(0i64), Position(64i64)) ::
         Satisfied("a", other, Position(64i64), Position(128i64)) ::

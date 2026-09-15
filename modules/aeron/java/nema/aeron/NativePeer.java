@@ -11,6 +11,7 @@ import org.agrona.concurrent.UnsafeBuffer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -71,7 +72,14 @@ public final class NativePeer {
                         if (!Arrays.equals(expected, bytes)) mismatch.incrementAndGet();
                         received.incrementAndGet();
                     });
-                    if (args.length > 6) Files.writeString(Path.of(args[6]), "ready\n");
+                    if (args.length > 6) {
+                        String resolved;
+                        while ((resolved = subscription.tryResolveChannelEndpointPort()) == null) pause(deadline);
+                        Path ready = Path.of(args[6]);
+                        Path pending = ready.resolveSibling(ready.getFileName() + ".tmp");
+                        Files.writeString(pending, resolved);
+                        Files.move(pending, ready, StandardCopyOption.ATOMIC_MOVE);
+                    }
                     while (received.get() < count) {
                         if (subscription.poll(assembler, 32) == 0) pause(deadline);
                     }

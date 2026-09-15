@@ -10,14 +10,30 @@ public final class ReviewChecks {
         Files.createDirectories(root);
         Path run = Files.createTempDirectory(root, "archive-control-review-");
         String driverDirectory = run.resolve("driver").toString();
-        try (Transport.Driver driver = Transport.ownedDriver(driverDirectory);
-             ArchiveBridge first = ArchiveBridge.openOwned(driverDirectory, run.resolve("first").toString(), 81001, 65536, 0);
-             ArchiveBridge second = ArchiveBridge.openOwned(driverDirectory, run.resolve("second").toString(), 81002, 65536, 0)) {
-            System.out.println("first requested=81001 attached=" + first.archiveId() + " incarnation=" + first.incarnation());
-            System.out.println("second requested=81002 attached=" + second.archiveId() + " incarnation=" + second.incarnation());
-            if (first.archiveId() != 81001 || second.archiveId() != 81002)
-                throw new AssertionError("Archive client attached to a different owned server");
+        Path storage = run.resolve("first");
+        try (Transport.Driver driver = Transport.ownedDriver(driverDirectory)) {
+            try (ArchiveBridge first = ArchiveBridge.openOwned(driverDirectory, storage.toString(), 81001, 65536, 0)) {
+                try {
+                    ArchiveBridge second = ArchiveBridge.openOwned(driverDirectory, run.resolve("second").toString(), 81002, 65536, 0);
+                    second.close();
+                    throw new AssertionError("second Archive sharing control streams was accepted");
+                } catch (IllegalStateException expected) { }
+                if (first.archiveId() != 81001) throw new AssertionError("Archive client identity changed");
+            }
+            Path catalog = storage.resolve("archive.catalog");
+            Path saved = storage.resolve("archive.catalog.saved");
+            Files.move(catalog, saved);
+            try {
+                ArchiveBridge replacement = ArchiveBridge.openOwned(driverDirectory, storage.toString(), 81001, 65536, 0);
+                replacement.close();
+                throw new AssertionError("recording IDs could be reused with an old incarnation");
+            } catch (IllegalStateException expected) {
+                if (!expected.getMessage().contains("no catalog")) throw expected;
+            } finally { Files.move(saved, catalog); }
+            try (ArchiveBridge restored = ArchiveBridge.openOwned(driverDirectory, storage.toString(), 81001, 65536, 0)) {
+                if (restored.archiveId() != 81001) throw new AssertionError("restored identity changed");
+            }
         }
-        System.out.println("PASS independent Archive control identity run=" + run);
+        System.out.println("PASS Archive control isolation, missing catalog rejects incarnation reuse, restored pair reopens run=" + run);
     }
 }

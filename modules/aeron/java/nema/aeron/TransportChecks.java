@@ -2,8 +2,6 @@ package nema.aeron;
 
 import io.aeron.Publication;
 import java.lang.management.ManagementFactory;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,19 +27,21 @@ public final class TransportChecks {
     public static void main(String[] args) throws Exception {
         String defaultRoot = System.getenv("NEMA_AERON_RUN");
         if (defaultRoot == null) defaultRoot = ".nema/transport-checks-" + System.nanoTime();
-        Path root = Path.of(args.length == 0 ? defaultRoot : args[0]);
+        boolean runMdc = args.length > 0 && args[args.length - 1].equals("mdc");
+        Path root = Path.of(args.length == 0 || (args.length == 1 && runMdc) ? defaultRoot : args[0]);
         Files.createDirectories(root);
         TransportChecks checks = new TransportChecks(root.toAbsolutePath());
         checks.binaryFanout();
         checks.fullQueue();
         checks.pollOwnershipAndWorkers();
         checks.workerFailureCleanup();
+        checks.interruptedWorkerJoin();
         checks.disconnectedAndBackpressure();
         checks.borrowedAndRepeated();
         checks.independentUdp();
         checks.driverFailure();
         checks.idleAndThroughput();
-        if (args.length > 1 && args[1].equals("mdc")) checks.mdc();
+        if (runMdc) checks.mdc();
         check(Transport.openResources() == 0, "resource leak: " + Transport.resourceReport());
         String diagnostic;
         while (!(diagnostic = Transport.diagnostic()).isEmpty()) System.out.println("DIAGNOSTIC " + diagnostic);
@@ -210,6 +210,32 @@ public final class TransportChecks {
         passed("worker failure cleanup", "synthetic retained failure reported; joined worker and subscription reclaimed");
     }
 
+    private void interruptedWorkerJoin() throws Exception {
+        String directory = directory("worker-unjoined-cleanup");
+        try (var driver = Transport.ownedDriver(directory)) {
+            var client = Transport.connect(directory);
+            var sub = Transport.addSubscription(client, "aeron:ipc", nextStream++, 1);
+            Transport.startWorker(sub, Transport.newCancel(), 10_000_000_000L);
+            Thread.sleep(10);
+            boolean failed = false;
+            // Hold the monitor that the real worker needs for its finally block,
+            // then interrupt the closing thread's join. No fake native worker.
+            synchronized (sub) {
+                Thread.currentThread().interrupt();
+                try { client.close(); }
+                catch (IllegalStateException expected) { failed = true; }
+                finally { Thread.interrupted(); }
+                check(failed, "interrupted worker join propagated");
+                check(!client.nativeClient.isClosed(), "live child keeps borrowed client mapped");
+                check(!sub.nativeSubscription.isClosed(), "unjoined worker keeps subscription mapped");
+                check(Transport.openResources() == 4, "driver/client/sub/worker remain inspectable");
+            }
+            client.close();
+            check(Transport.openResources() == 1, "retry joins and cleans client children");
+        }
+        passed("interrupted worker join", "client/sub mappings retained until successful close retry");
+    }
+
     private void borrowedAndRepeated() throws Exception {
         String directory = directory("borrowed");
         try (var driver = Transport.ownedDriver(directory)) {
@@ -234,8 +260,7 @@ public final class TransportChecks {
 
     private void independentUdp() throws Exception {
         int stream = nextStream++;
-        int port = freeUdpPort();
-        String channel = "aeron:udp?endpoint=127.0.0.1:" + port;
+        String channel = "aeron:udp?endpoint=127.0.0.1:0";
         byte[] bytes = randomBytes(10_000);
         String hex = HexFormat.of().formatHex(bytes);
         Path ready = runtime.resolve("native-consumer.ready");
@@ -243,6 +268,7 @@ public final class TransportChecks {
             Integer.toString(stream), hex, "3", ready.toString());
         try {
             waitFile(ready, receiver);
+            channel = Files.readString(ready);
             String directory = directory("bridge-udp-sender");
             try (var driver = Transport.ownedDriver(directory);
                  var client = Transport.connect(directory);
@@ -253,12 +279,11 @@ public final class TransportChecks {
         } finally { stop(receiver); }
 
         String directory = directory("bridge-udp-receiver");
-        port = freeUdpPort();
-        channel = "aeron:udp?endpoint=127.0.0.1:" + port;
+        channel = "aeron:udp?endpoint=127.0.0.1:0";
         try (var driver = Transport.ownedDriver(directory);
              var client = Transport.connect(directory);
              var sub = Transport.addSubscription(client, channel, stream, 4)) {
-            Process sender = nativePeer("send-owned", directory("native-sender"), channel,
+            Process sender = nativePeer("send-owned", directory("native-sender"), resolvedChannel(sub),
                 Integer.toString(stream), hex, "3");
             try {
                 for (var message : receive(sub, 3)) check(Arrays.equals(bytes, message.bytes), "native producer bytes");
@@ -328,16 +353,15 @@ public final class TransportChecks {
     private void mdc() throws Exception {
         String directory = directory("mdc");
         int stream = nextStream++;
-        int port1 = freeUdpPort(), port2 = freeUdpPort();
-        String endpoint1 = "aeron:udp?endpoint=127.0.0.1:" + port1;
-        String endpoint2 = "aeron:udp?endpoint=127.0.0.1:" + port2;
+        String endpoint1 = "aeron:udp?endpoint=127.0.0.1:0";
+        String endpoint2 = "aeron:udp?endpoint=127.0.0.1:0";
         try (var driver = Transport.ownedDriver(directory);
              var client = Transport.connect(directory);
              var sub1 = Transport.addSubscription(client, endpoint1, stream, 2);
              var sub2 = Transport.addSubscription(client, endpoint2, stream, 2);
              var pub = Transport.addExclusivePublication(client, "aeron:udp?control-mode=manual", stream)) {
-            pub.nativePublication.addDestination(endpoint1);
-            pub.nativePublication.addDestination(endpoint2);
+            pub.nativePublication.addDestination(resolvedChannel(sub1));
+            pub.nativePublication.addDestination(resolvedChannel(sub2));
             connected(pub, sub1, sub2);
             byte[] bytes = randomBytes(4096);
             offer(pub, bytes);
@@ -388,8 +412,14 @@ public final class TransportChecks {
         return messages;
     }
 
-    private static int freeUdpPort() throws Exception {
-        try (DatagramSocket socket = new DatagramSocket(0, InetAddress.getLoopbackAddress())) { return socket.getLocalPort(); }
+    private static String resolvedChannel(Transport.Sub sub) {
+        long deadline = deadline();
+        String channel;
+        while ((channel = Transport.subscriptionChannel(sub)).isEmpty()) {
+            check(System.nanoTime() < deadline, "channel endpoint resolution deadline");
+            LockSupport.parkNanos(1_000_000L);
+        }
+        return channel;
     }
 
     private Process nativePeer(String... args) throws Exception {

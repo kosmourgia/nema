@@ -97,6 +97,15 @@ public final class Transport {
                     else failure.addSuppressed(e);
                 }
             }
+            if (!children.isEmpty()) {
+                // A subscription deliberately remains mapped when its polling
+                // worker has not joined. Closing Aeron here would bypass that
+                // guard and unmap buffers underneath the remaining worker.
+                closed = false;
+                DIAGNOSTICS.add("client remains open: " + children.size() + " child resources failed to close");
+                if (failure == null) failure = new IllegalStateException("client has unclosed child resources");
+                throw failure;
+            }
             try { nativeClient.close(); }
             finally { OPEN.remove(resource); }
             if (failure != null) throw failure;
@@ -160,6 +169,7 @@ public final class Transport {
         private final Client client;
         private final ArrayBlockingQueue<Message> queue;
         private final ControlledFragmentAssembler assembler;
+        private final ConcurrentLinkedQueue<Integer> unavailableSessions;
         private final long resource;
         private final AtomicLong queueFull = new AtomicLong();
         private final AtomicLong highWater = new AtomicLong();
@@ -167,9 +177,11 @@ public final class Transport {
         private Thread pollingOwner;
         private Worker worker;
 
-        private Sub(Client client, Subscription subscription, int capacity) {
+        private Sub(Client client, Subscription subscription, int capacity,
+                    ConcurrentLinkedQueue<Integer> unavailableSessions) {
             this.client = client;
             nativeSubscription = subscription;
+            this.unavailableSessions = unavailableSessions;
             queue = new ArrayBlockingQueue<>(capacity);
             assembler = new ControlledFragmentAssembler((buffer, offset, length, header) -> {
                 // Only the polling owner produces. A consumer can create capacity but
@@ -192,6 +204,8 @@ public final class Transport {
             Thread caller = Thread.currentThread();
             if (pollingOwner == null) pollingOwner = caller;
             if (pollingOwner != caller) throw new IllegalStateException("subscription has a different polling owner");
+            Integer unavailable;
+            while ((unavailable = unavailableSessions.poll()) != null) assembler.freeSessionBuffer(unavailable);
             return nativeSubscription.controlledPoll(assembler, fragmentLimit);
         }
 
@@ -221,6 +235,7 @@ public final class Transport {
                 }
                 finally {
                     assembler.clear();
+                    unavailableSessions.clear();
                     client.children.remove(this);
                     OPEN.remove(resource);
                 }
@@ -341,7 +356,10 @@ public final class Transport {
         if (queueCapacity <= 0) throw new IllegalArgumentException("queue capacity must be positive");
         synchronized (client) {
             client.requireOpen();
-            Sub sub = new Sub(client, client.nativeClient.addSubscription(channel, streamId), queueCapacity);
+            ConcurrentLinkedQueue<Integer> unavailable = new ConcurrentLinkedQueue<>();
+            Subscription nativeSub = client.nativeClient.addSubscription(channel, streamId,
+                image -> { }, image -> unavailable.add(image.sessionId()));
+            Sub sub = new Sub(client, nativeSub, queueCapacity, unavailable);
             client.children.add(sub);
             return sub;
         }
@@ -363,6 +381,11 @@ public final class Transport {
     public static long queueHighWater(Sub sub) { return sub.highWater.get(); }
     public static boolean publicationConnected(Pub pub) { return pub.nativePublication.isConnected(); }
     public static boolean subscriptionConnected(Sub sub) { return sub.nativeSubscription.isConnected(); }
+    /** Empty until the driver has resolved the channel's endpoint port. */
+    public static String subscriptionChannel(Sub sub) {
+        String resolved = sub.nativeSubscription.tryResolveChannelEndpointPort();
+        return resolved == null ? "" : resolved;
+    }
     public static boolean clientClosed(Client client) { return client.nativeClient.isClosed(); }
     public static int publicationSession(Pub pub) { return pub.nativePublication.sessionId(); }
     public static long publicationPosition(Pub pub) { return pub.nativePublication.position(); }

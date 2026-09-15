@@ -7,4 +7,4 @@ authors = ["Nema contributors"]
 
 [jar-dependencies]
 "aeron-all-1.53.1.jar" = "url:https://repo.maven.apache.org/maven2/io/aeron/aeron-all/1.53.1/aeron-all-1.53.1.jar"
-"nema-aeron-bridge.jar" = "url:file:../deps/nema-aeron-bridge.jar"
+"nema-aeron-bridge.jar" = "url:file:../nema-aeron-bridge.jar"

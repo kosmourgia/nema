@@ -1,0 +1,6 @@
+[package]
+name = "nema-aeron-probes"
+description = "Isolated compiler capability reproducers"
+version = "0.1.0"
+flix = "0.75.3"
+authors = ["Nema contributors"]

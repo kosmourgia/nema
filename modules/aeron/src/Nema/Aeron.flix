@@ -12,12 +12,14 @@ pub mod Nema.Aeron {
     use Nema.Aeron.Position.Position
     use Nema.Aeron.ArchiveIdentity.ArchiveIdentity
     use Nema.Aeron.RecordingKey.RecordingKey
+    use Nema.Aeron.RecordingId.RecordingId
     use Nema.Aeron.RecordingRange.RecordingRange
     use Nema.Aeron.NativeHeader.NativeHeader
     use Nema.Aeron.Message.Message
     import nema.aeron.Transport
     import nema.aeron.{Transport$Driver => JDriver, Transport$Client => JClient,
-        Transport$Pub => JPub, Transport$Sub => JSub, Transport$Cancel => JCancel}
+        Transport$Pub => JPub, Transport$Sub => JSub, Transport$Cancel => JCancel,
+        Transport$Message => JMessage}
     import java.lang.Throwable
 
     /// Handles can only be obtained from the bridge's private constructors.
@@ -30,10 +32,12 @@ pub mod Nema.Aeron {
     pub enum Deadline(Int64)
     pub enum ChannelUri(String) with Eq, ToString
     pub enum StreamId(Int32) with Eq, ToString
-    pub enum SessionId(Int32) with Eq, ToString
+    pub enum SessionId(Int32) with Eq, Order, ToString
     pub enum Position(Int64) with Eq, Order, ToString
     pub enum ArchiveIdentity(String) with Eq, ToString
-    pub enum RecordingKey(ArchiveIdentity, Int64) with Eq, ToString
+    pub enum ArchiveId(Int64) with Eq, ToString
+    pub enum RecordingId(Int64) with Eq, ToString
+    pub enum RecordingKey(ArchiveIdentity, RecordingId) with Eq, ToString
     pub enum RecordingRange(RecordingKey, Position, Position) with Eq, ToString
 
     pub enum Offer with Eq, ToString {
@@ -62,7 +66,7 @@ pub mod Nema.Aeron {
     pub def messageStart(m: Message): Position = let Message(_, NativeHeader(_, _, p, _, _, _, _, _, _, _)) = m; p
     pub def messageEnd(m: Message): Position = let Message(_, NativeHeader(_, _, _, p, _, _, _, _, _, _)) = m; p
     pub def recordingSource(k: RecordingKey): String =
-        let RecordingKey(ArchiveIdentity(a), id) = k; "${a}/${id}"
+        let RecordingKey(ArchiveIdentity(a), RecordingId(id)) = k; "${a}/${id}"
 
     /// Codes verified against Publication.java in Aeron 1.53.1.
     pub def offerOutcome(n: Int64): Offer =
@@ -96,11 +100,11 @@ pub mod Nema.Aeron {
     pub def closeSubscription(s: Subscription): Result[Failure, Unit] \ IO =
         let Subscription(j) = s; attempt(_ -> Transport.closeSubscription(j))
 
-    def attempt(f: Unit -> a \ ef): Result[Failure, a] \ ef + IO =
+    pub def attempt(f: Unit -> a \ ef): Result[Failure, a] \ ef + IO =
         try { Ok(f()) } catch { case ex: Throwable => Err(Failure.Native(ex.toString())) }
 
     /// Also catches Java exceptions from the body so closing is not skipped.
-    def scope(open: Result[Failure, a], close: a -> Result[Failure, Unit] \ IO,
+    def scopeImpl(open: Result[Failure, a], close: a -> Result[Failure, Unit] \ IO,
               body: a -> Result[Failure, b] \ ef): Result[Failure, b] \ ef + IO =
         match open {
             case Err(e) => Err(e)
@@ -115,15 +119,29 @@ pub mod Nema.Aeron {
                     case (Err(e), Err(c)) => Err(Failure.Native("body: ${e}; close: ${c}"))
                 }
         }
-    pub def withDriver(path: String, body: Driver -> Result[Failure, a] \ ef): Result[Failure, a] \ ef + IO =
+    /// Only primitive effects may cross a resource scope. Interpret custom
+    /// effects inside it; an outer algebraic handler must not abandon cleanup.
+    pub def scope(open: Result[Failure, a], close: a -> Result[Failure, Unit] \ IO,
+        body: a -> Result[Failure, b] \ IO): Result[Failure, b] \ IO = scopeImpl(open, close, body)
+    pub def scopeCsp(open: Result[Failure, a], close: a -> Result[Failure, Unit] \ IO,
+        body: a -> Result[Failure, b] \ {IO, Chan, NonDet}): Result[Failure, b] \ {IO, Chan, NonDet} = scopeImpl(open, close, body)
+    pub def withDriver(path: String, body: Driver -> Result[Failure, a] \ IO): Result[Failure, a] \ IO =
         scope(openDriver(path), closeDriver, body)
     /// Borrows the Media Driver. Closing this scope only closes its Aeron client.
-    pub def withClient(path: String, body: Client -> Result[Failure, a] \ ef): Result[Failure, a] \ ef + IO =
+    pub def withClient(path: String, body: Client -> Result[Failure, a] \ IO): Result[Failure, a] \ IO =
         scope(openClient(path), closeClient, body)
-    pub def withPublication(c: Client, u: ChannelUri, s: StreamId, body: Publication -> Result[Failure, a] \ ef): Result[Failure, a] \ ef + IO =
+    pub def withPublication(c: Client, u: ChannelUri, s: StreamId, body: Publication -> Result[Failure, a] \ IO): Result[Failure, a] \ IO =
         scope(openPublication(c, u, s), closePublication, body)
-    pub def withSubscription(c: Client, u: ChannelUri, s: StreamId, capacity: Int32, body: Subscription -> Result[Failure, a] \ ef): Result[Failure, a] \ ef + IO =
+    pub def withSubscription(c: Client, u: ChannelUri, s: StreamId, capacity: Int32, body: Subscription -> Result[Failure, a] \ IO): Result[Failure, a] \ IO =
         scope(openSubscription(c, u, s, capacity), closeSubscription, body)
+    pub def withDriverCsp(path: String, body: Driver -> Result[Failure, a] \ {IO, Chan, NonDet}): Result[Failure, a] \ {IO, Chan, NonDet} =
+        scopeCsp(openDriver(path), closeDriver, body)
+    pub def withClientCsp(path: String, body: Client -> Result[Failure, a] \ {IO, Chan, NonDet}): Result[Failure, a] \ {IO, Chan, NonDet} =
+        scopeCsp(openClient(path), closeClient, body)
+    pub def withPublicationCsp(c: Client, u: ChannelUri, s: StreamId, body: Publication -> Result[Failure, a] \ {IO, Chan, NonDet}): Result[Failure, a] \ {IO, Chan, NonDet} =
+        scopeCsp(openPublication(c, u, s), closePublication, body)
+    pub def withSubscriptionCsp(c: Client, u: ChannelUri, s: StreamId, capacity: Int32, body: Subscription -> Result[Failure, a] \ {IO, Chan, NonDet}): Result[Failure, a] \ {IO, Chan, NonDet} =
+        scopeCsp(openSubscription(c, u, s, capacity), closeSubscription, body)
 
     pub def cancelToken(): Cancel \ IO = Cancel(Transport.newCancel())
     pub def stop(c: Cancel): Unit \ IO = let Cancel(j) = c; Transport.cancel(j)
@@ -144,13 +162,18 @@ pub mod Nema.Aeron {
         attempt(_ -> offerOutcome(Transport.offer(j, owned)))
     }
     /// Cooperative retry lives in Flix; terminal native outcomes remain typed.
-    pub def publish(p: Publication, bytes: Vector[Int8], cancel: Cancel, deadline: Deadline): Result[Failure, Offer] \ IO =
+    pub def publish(p: Publication, bytes: Vector[Int8], cancel: Cancel, deadline: Deadline): Result[Failure, Offer] \ IO = region rc {
+        let Publication(j) = p;
+        let owned = Vector.toArray(rc, bytes);
+        retryOffer(j, owned, cancel, deadline)
+    }
+    def retryOffer(j: JPub, bytes: Array[Int8, r], cancel: Cancel, deadline: Deadline): Result[Failure, Offer] \ {IO, r} =
         if (isStopped(cancel)) Err(Failure.Cancelled)
         else if (expired(deadline)) Err(Failure.Deadline)
-        else match tryPublish(p, bytes) {
-            case Ok(Offer.Backpressured) => idle(cancel); publish(p, bytes, cancel, deadline)
-            case Ok(Offer.NotConnected) => idle(cancel); publish(p, bytes, cancel, deadline)
-            case Ok(Offer.AdministrativeRetry) => idle(cancel); publish(p, bytes, cancel, deadline)
+        else match attempt(_ -> offerOutcome(Transport.offer(j, bytes))) {
+            case Ok(Offer.Backpressured) => idle(cancel); retryOffer(j, bytes, cancel, deadline)
+            case Ok(Offer.NotConnected) => idle(cancel); retryOffer(j, bytes, cancel, deadline)
+            case Ok(Offer.AdministrativeRetry) => idle(cancel); retryOffer(j, bytes, cancel, deadline)
             case result => result
         }
 
@@ -159,18 +182,27 @@ pub mod Nema.Aeron {
         let Subscription(j) = s; attempt(_ -> Transport.poll(j, fragmentLimit))
     pub def queued(s: Subscription): Int32 \ IO = let Subscription(j) = s; Transport.queued(j)
     pub def queueFullCount(s: Subscription): Int64 \ IO = let Subscription(j) = s; Transport.queueFullCount(j)
+    pub def releasePollOwner(s: Subscription): Result[Failure, Unit] \ IO =
+        let Subscription(j) = s; attempt(_ -> Transport.releasePollOwner(j))
+    pub def subscriptionClosed(s: Subscription): Bool \ IO =
+        let Subscription(j) = s; j.nativeSubscription.isClosed()
+    pub def resolvedChannel(s: Subscription): String \ IO =
+        let Subscription(j) = s; Transport.subscriptionChannel(j)
     pub def take(s: Subscription): Result[Failure, Option[Message]] \ IO = {
         let Subscription(j) = s;
         attempt(_ -> {
             let m = Transport.take(j);
-            if (Transport.isNull(m)) None else
-                Some(Message(Array.toVector(Transport.bytes(m)),
+            fromNative(m)
+        })
+    }
+    /// Bridge seam: conversion consumes an owned callback copy, never a DirectBuffer.
+    pub def fromNative(m: JMessage): Option[Message] \ IO =
+        if (Transport.isNull(m)) None else
+            Some(Message(Array.toVector(Transport.bytes(m)),
                     NativeHeader(SessionId(Transport.session(m)), StreamId(Transport.stream(m)),
                         Position(Transport.startPosition(m)), Position(Transport.endPosition(m)),
                         Transport.source(m), Transport.termId(m), Transport.termOffset(m),
                         Transport.flags(m), Transport.reservedValue(m), Transport.imageCorrelationId(m))))
-        })
-    }
     pub def receive(s: Subscription, cancel: Cancel, deadline: Deadline): Result[Failure, Message] \ IO =
         if (isStopped(cancel)) Err(Failure.Cancelled)
         else if (expired(deadline)) Err(Failure.Deadline)

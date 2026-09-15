@@ -3,7 +3,9 @@ set -euo pipefail
 module=$(cd -- "$(dirname -- "$0")/.." && pwd)
 state="$module/.nema"
 deps="$state/deps"
-mkdir -p "$deps" "$state/classes" "$state/flix" "$state/runs"
+mkdir -p "$deps" "$state/builds" "$state/runs"
+stage=$(mktemp -d "$state/builds/build.XXXXXX")
+mkdir -p "$stage/classes" "$stage/flix/src" "$stage/flix/test" "$stage/flix/lib/external"
 artifact="$deps/aeron-all-1.53.1.jar"
 if [[ ! -f "$artifact" ]]; then
     curl --fail --location --retry 2 https://repo.maven.apache.org/maven2/io/aeron/aeron-all/1.53.1/aeron-all-1.53.1.jar -o "$artifact"
@@ -13,26 +15,24 @@ actual=$(sha256sum "$artifact")
 [[ ${actual%% *} == "$expected" ]] || { echo 'Aeron artifact checksum mismatch' >&2; exit 1; }
 mapfile -t java_sources < <(rg --files "$module/java" -g '*.java' | sort)
 if (( ${#java_sources[@]} )); then
-    javac -cp "$artifact" -d "$state/classes" "${java_sources[@]}"
+    javac -cp "$artifact" -d "$stage/classes" "${java_sources[@]}"
 fi
-jar --create --file "$deps/nema-aeron-bridge.jar" -C "$state/classes" .
-if [[ -L "$state/flix/src" ]]; then unlink "$state/flix/src"; fi
-if [[ -L "$state/flix/test" ]]; then unlink "$state/flix/test"; fi
-mkdir -p "$state/flix/src" "$state/flix/test"
-cp -R "$module/src/." "$state/flix/src/"
-if [[ -d "$module/test" ]]; then cp -R "$module/test/." "$state/flix/test/"; fi
-cp "$module/flix.toml" "$state/flix/flix.toml"
-mkdir -p "$state/flix/lib/external"
-ln -sfn "$artifact" "$state/flix/lib/external/aeron-all-1.53.1.jar"
-ln -sfn "$deps/nema-aeron-bridge.jar" "$state/flix/lib/external/nema-aeron-bridge.jar"
+bridge="$stage/nema-aeron-bridge.jar"
+jar --create --file "$bridge" -C "$stage/classes" .
+cp -R "$module/src/." "$stage/flix/src/"
+if [[ -n ${NEMA_AERON_PROBE:-} ]]; then cp "$NEMA_AERON_PROBE" "$stage/flix/src/NegativeProbe.flix"; fi
+if [[ -d "$module/test" ]]; then cp -R "$module/test/." "$stage/flix/test/"; fi
+cp "$module/flix.toml" "$stage/flix/flix.toml"
+ln -sfn "$artifact" "$stage/flix/lib/external/aeron-all-1.53.1.jar"
+ln -sfn "$bridge" "$stage/flix/lib/external/nema-aeron-bridge.jar"
 export NEMA_AERON_RUN=${NEMA_AERON_RUN:-$(mktemp -d "$state/runs/run.XXXXXX")}
-cd "$state/flix"
-flix_jar=/usr/share/java/flix/flix.jar
+cd "$stage/flix"
+flix_jar=${NEMA_FLIX_JAR:-/usr/share/java/flix/flix.jar}
 java_flags=(--add-opens java.base/jdk.internal.misc=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -XX:ActiveProcessorCount=2)
 flix_args=(--no-install --threads 2)
 case ${1:-help} in
-    build|check|test) java "${java_flags[@]}" -jar "$flix_jar" "$1" "${flix_args[@]}" ;;
+    build|check|test) action=$1; shift; java "${java_flags[@]}" -jar "$flix_jar" "$action" "${flix_args[@]}" "$@" ;;
     run) shift; java "${java_flags[@]}" -jar "$flix_jar" run "${flix_args[@]}" "$@" ;;
-    java) shift; java "${java_flags[@]}" -cp "$artifact:$deps/nema-aeron-bridge.jar" "$@" ;;
+    java) shift; java "${java_flags[@]}" -cp "$artifact:$bridge" "$@" ;;
     *) echo 'usage: modules/aeron/bin/aeron build|check|test|run [--entrypoint NAME]|java CLASS [ARGS]' ;;
 esac

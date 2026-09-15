@@ -1,0 +1,89 @@
+Found 'flix.toml'. Checking dependencies...
+Resolving Flix dependencies...
+Downloading Flix dependencies...
+Resolving Maven dependencies...
+  Running Maven dependency resolver.
+Downloading external jar dependencies...
+Dependency resolution completed.
+result=99; closeCalls=0
+-- Parse Error [E6629] ------------------------ ../../../probes/OpaqueProbe.flix
+
+>> Expected <declaration> before <name>.
+
+2 | pub opaque type Handle = Int64
+        ^^^^^^
+        Here
+
+-- Parse Error [E6629] ------------------------ ../../../probes/OpaqueProbe.flix
+
+>> Expected 'alias' before <Name>.
+
+2 | pub opaque type Handle = Int64
+                    ^^^^^^
+                    Here
+
+
+Compilation failed with 2 error(s).
+Found 'flix.toml'. Checking dependencies...
+Resolving Flix dependencies...
+Downloading Flix dependencies...
+Resolving Maven dependencies...
+  Running Maven dependency resolver.
+Downloading external jar dependencies...
+  Cached `aeron-all-1.53.1.jar` from `https://repo.maven.apache.org/maven2/io/aeron/aeron-all/1.53.1/aeron-all-1.53.1.jar`.
+  Cached `nema-aeron-bridge.jar` from `file:../nema-aeron-bridge.jar`.
+Dependency resolution completed.
+-- Type Error [E6217] ----------------------------------- src/NegativeProbe.flix
+
+6 | def forbidden(): Result[Aeron.Failure, Unit] \ {IO, Escape} =
+                                                        ^^^^^^
+                                                        Unused effect: 'Escape'
+
+Explanation: To fix this, either remove 'Escape' from the signature
+or use the effect in the function body
+
+-- Type Error [E6218] ----------------------------------- src/NegativeProbe.flix
+
+>> Mismatched effect(s): expected 'IO', but got 'Escape'.
+
+128 |     pub def withDriver(path: String, body: Driver -> Result[Failure, a] \ IO): Result[Failure, a] \ IO =
+                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                                 function expected argument with effect(s) 'IO'
+
+7 |     Aeron.withDriver("unused-no-runtime", _ -> { Escape.leave(); Ok(()) })
+                                                     ^^^^^^^^^^^^^^
+                                                     function argument with effect(s) 'Escape' was passed
+
+7 |     Aeron.withDriver("unused-no-runtime", _ -> { Escape.leave(); Ok(()) })
+                                                     ^^^^^^^^^^^^^^
+                                                     the culprit
+
+Explanation: A function with effect(s) 'IO' cannot accept an argument
+that carries effect(s) 'Escape'. Either:
+
+  (a) Change the argument to use effect(s) 'IO', or
+  (b) Update the function signature to accept effect(s) 'Escape'.
+
+
+Compilation failed with 2 error(s).
+Found 'flix.toml'. Checking dependencies...
+Resolving Flix dependencies...
+Downloading Flix dependencies...
+Resolving Maven dependencies...
+  Running Maven dependency resolver.
+Downloading external jar dependencies...
+  Cached `aeron-all-1.53.1.jar` from `https://repo.maven.apache.org/maven2/io/aeron/aeron-all/1.53.1/aeron-all-1.53.1.jar`.
+  Cached `nema-aeron-bridge.jar` from `file:../nema-aeron-bridge.jar`.
+Dependency resolution completed.
+-- Type Error [E7685] ----------------------------------- src/NegativeProbe.flix
+
+>> Unexpected argument: expected 'Position', got 'StreamId'.
+
+5 | def forbiddenCoordinate(): Int64 = Aeron.positionBytes(StreamId(7))
+                                                           ^^^^^^^^^^^
+                                                           unexpected argument type
+
+The function 'Nema.Aeron.positionBytes' expects its 1st argument to be of type 'Position'.
+
+Expected: Position
+  Actual: StreamId

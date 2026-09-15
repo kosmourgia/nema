@@ -1,0 +1,10 @@
+{
+  "schema": "nema.lab.record/v1",
+  "id": "producer-a/incarnation-a/9007199254740993",
+  "source": "producer-a",
+  "incarnation": "incarnation-a",
+  "seq": "9007199254740993",
+  "kind": "sample",
+  "parents": [],
+  "body": {"text": "Opaque application payload; transport coordinates are separate metadata."}
+}
