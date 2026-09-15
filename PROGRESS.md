@@ -16,10 +16,11 @@ effect, CSP, reducer, associated-type/effect, and Datalog experiments. Raw
 operational observations remain distinct from both typed reductions and
 semantic projections.
 
-Further expansion of that seed is paused. A separate, runnable
-`Nema.Lab.Vivarium` specimen now exercises the project's conceptual vocabulary
-without refactoring or coupling itself to the fork bench. It is an immutable
-laboratory model, not a proposed production runtime.
+Further expansion of that seed is paused. The runnable `Nema.Lab.Vivarium`
+specimen exercises the project's conceptual vocabulary as an immutable oracle;
+the adjacent `Nema.Lab.Vivarium.Live` specimen realizes those observable joints
+with effects, resumptions, CSP, and regions. Both remain laboratory models and
+are deliberately uncoupled from the fork bench.
 
 Obsolete Mac/Lima bridge notes, placeholders, and unrelated starter debris
 were removed after the Arch remote project became canonical.
@@ -70,6 +71,23 @@ Java 21 is only Flix's compatibility floor. Nema uses the VM's default Java
   two-Pulse Measure frontiers, and read-only Datalog topology projections. Its
   `Ask` holds a real escaped Flix resumption locally and resumes it under a
   later Beat's handler context.
+- Corrected the pure Vivarium invariant to `identity != state != location`:
+  Genesis now contains birth information only, while Object, Revision, and
+  Payload targets each support zero/one/many illustrative Aeron/CAS/Memory
+  representation bindings that can change or disappear without changing
+  Object identity or Revision history.
+- Added a genuinely asynchronous live Vivarium: worker-local `Pulse.next()`
+  handlers suspend on unbuffered channels while holding their resumptions;
+  deterministic driver Beats resume looping Observers; abort and commit expose
+  the closed-state/systole/commit/diastole boundary; independently spawned
+  recorder and witness processes fan out one committed `Notify` invocation.
+- Captured a result-bearing `Ask` continuation at stable address C17, kept the
+  live JVM resumption outside semantic state, observed `Live -> Durable(recipe)
+  -> Live -> Resolved`, and resumed it on Beat 4 under the later `BeatContext`
+  before the Observer waited again.
+- Coordinated two independently driven live Pulses through Measure M2. It stays
+  gathering until opening frontiers `{P3:7, P4:9}` and closes only after both
+  obligations at `{P3:9, P4:11}`. Its Datalog view is read-only.
 - Added transactional terminal, JSON, and prompt surfaces, plus cursor-based
   catch-up and deliberate stale/retry/conflict dispositions.
 - Added a mode-`0600` Unix JSONL daemon and standard-library clients. A stalled
@@ -90,11 +108,14 @@ Java 21 is only Flix's compatibility floor. Nema uses the VM's default Java
 
 ```text
 ./bin/nema test
-  Flix: 26 passed, 0 failed
+  Flix: 42 passed, 0 failed
   Python: 11 passed, 0 failed
 
 ./bin/nema lab vivarium
   deterministic Object/Pulse/Beat/Measure/continuation trace
+
+./bin/nema lab vivarium-live
+  real Pulse waits/resumptions, transactional phases, Ask, and live Measure
 
 ./bin/nema demo bidirectional --mode fixture
   10 raw records; malformed 1, notifications 3, requests 3, responses 3
@@ -132,6 +153,10 @@ Java 21 is only Flix's compatibility floor. Nema uses the VM's default Java
   records a stable address and changing `Live` / `Durable` / `Resolved` /
   `Dropped` binding, but the durable recipe is illustrative and is not JVM
   continuation serialization.
+- Flix 0.75.3 does not implicitly cancel the observed region child while it is
+  blocked in `Channel.recv`; scope exit waits. The live specimen therefore
+  uses a cooperative `Stop` handshake to resume/detach workers before closing
+  their region. It does not claim preemptive process cancellation.
 - Hook raw bytes may contain private prompts and stay ignored under `.nema/`.
   The 64 MiB fallback ceiling records a hash-and-length gap rather than silently
   claiming unavailable bytes.

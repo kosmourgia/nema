@@ -14,6 +14,7 @@ fixture and native two-branch experiments through selection and parent delivery.
 
 # Compact Flix specimen: Objects, Pulses, Beats, Measures, and resumptions.
 ./bin/nema lab vivarium
+./bin/nema lab vivarium-live
 
 # No model request: real initialize + capability probe.
 ./bin/nema probe app-server
@@ -89,5 +90,6 @@ systemctl --user disable --now nema.service
 Read [PROGRESS.md](PROGRESS.md), [ARCHITECTURE.md](ARCHITECTURE.md), and
 [docs/capabilities.md](docs/capabilities.md) for the exact boundary. The
 standalone Flix thought experiment has a verified walkthrough in
-[docs/vivarium.md](docs/vivarium.md).
+[docs/vivarium.md](docs/vivarium.md), with its live effects/CSP realization in
+[docs/vivarium-live.md](docs/vivarium-live.md).
 `NEMA_V0_HANDOFF.md` remains the scope brief.

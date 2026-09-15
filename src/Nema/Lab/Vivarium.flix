@@ -46,10 +46,23 @@ pub mod Nema.Lab.Vivarium {
         case Closed
     }
 
+    /// A physical representation is a mutable binding, not part of Genesis.
+    /// These are illustrative values; the lab has no Aeron or CAS dependency.
+    pub enum Locator with Eq, Order, ToString {
+        case Aeron(String)
+        case CAS(String)
+        case Memory(String)
+    }
+
+    pub enum RepresentationTarget with Eq, Order, ToString {
+        case Object(ObjectId)
+        case Revision(RevisionId)
+        case Payload(PayloadId)
+    }
+
     pub type alias Genesis = {
         name = String,
-        bornAs = Value,
-        physicalLocator = String
+        bornAs = Value
     }
 
     pub type alias Revision = {
@@ -62,6 +75,11 @@ pub mod Nema.Lab.Vivarium {
     pub type alias Payload = {
         id = PayloadId,
         value = Value
+    }
+
+    pub type alias Representation = {
+        target = RepresentationTarget,
+        locator = Locator
     }
 
     pub type alias ObjectRecord = {
@@ -141,6 +159,7 @@ pub mod Nema.Lab.Vivarium {
         nextMeasure = Int32,
         objects = List[ObjectRecord],
         payloads = List[Payload],
+        representations = List[Representation],
         pulses = List[Pulse],
         observers = List[Observer],
         registrations = List[Registration],
@@ -188,6 +207,7 @@ pub mod Nema.Lab.Vivarium {
         nextMeasure = 2,
         objects = Nil,
         payloads = Nil,
+        representations = Nil,
         pulses = Nil,
         observers = Nil,
         registrations = Nil,
@@ -197,7 +217,7 @@ pub mod Nema.Lab.Vivarium {
         measures = Nil
     }
 
-    pub def birth(name: String, value: Value, physicalLocator: String, world: World): (World, ObjectId) = {
+    pub def birth(name: String, value: Value, world: World): (World, ObjectId) = {
         let oid = ObjectId.ObjectId(world#nextObject);
         let rid = RevisionId.RevisionId(world#nextRevision);
         let payloadId = PayloadId.PayloadId(world#nextPayload);
@@ -205,7 +225,7 @@ pub mod Nema.Lab.Vivarium {
         let revision = {id = rid, object = oid, parent = None, payload = payloadId};
         let object = {
             id = oid,
-            genesis = {name = name, bornAs = value, physicalLocator = physicalLocator},
+            genesis = {name = name, bornAs = value},
             head = rid,
             history = revision :: Nil
         };
@@ -218,6 +238,24 @@ pub mod Nema.Lab.Vivarium {
             | world
         }, oid)
     }
+
+    pub def bindLocator(target: RepresentationTarget, locator: Locator, world: World): World =
+        if (List.exists(r -> r#target == target and r#locator == locator, world#representations))
+            world
+        else
+            {representations = {target = target, locator = locator} :: world#representations | world}
+
+    pub def unbindLocator(target: RepresentationTarget, locator: Locator, world: World): World =
+        {representations = List.filter(r -> r#target != target or r#locator != locator, world#representations) | world}
+
+    pub def replaceLocator(target: RepresentationTarget, previous: Locator, current: Locator, world: World): World =
+        unbindLocator(target, previous, world) |> bindLocator(target, current)
+
+    pub def locators(target: RepresentationTarget, world: World): Set[Locator] =
+        world#representations
+        |> List.filter(r -> r#target == target)
+        |> List.map(r -> r#locator)
+        |> List.toSet
 
     pub def newPulse(driver: String, world: World): (World, PulseId) = {
         let pid = PulseId.PulseId(world#nextPulse);
@@ -685,7 +723,7 @@ pub mod Nema.Lab.Vivarium {
     pub def describe(world: World): String = {
         let objectLines = world#objects |> List.reverse |> List.map(o ->
             let payload = objectPayloadId(o#id, world) |> Option.map(showPayload) |> Option.getWithDefault("none");
-            "${showObject(o#id)} object genesis=\"${o#genesis#name}\" locator=${o#genesis#physicalLocator} head=${showRevision(o#head)} payload=${payload} revisions=${List.length(o#history)}"
+            "${showObject(o#id)} object genesis=\"${o#genesis#name}\" head=${showRevision(o#head)} payload=${payload} revisions=${List.length(o#history)} locators=${locators(RepresentationTarget.Object(o#id), world)}"
         );
         let pulseLines = world#pulses |> List.reverse |> List.map(p ->
             "${showPulse(p#id)} pulse beat=${p#beat} driven-by=\"${p#driver}\""
@@ -697,37 +735,43 @@ pub mod Nema.Lab.Vivarium {
     }
 
     pub def demo(): String = {
-        let (w1, seed) = birth("seed", Value.Text("asleep"), "urn:nema:seed", empty());
+        let (w1, seed) = birth("seed", Value.Text("asleep"), empty());
         let inert = "birth ${showObject(seed)} (no Pulse; unrelated ticks leave it untouched)";
-        let (w2, pulse) = newPulse("hand crank", w1);
-        let w3 = animate(seed, pulse, Reaction.Notifier, w2);
-        let (w4, recorder) = birth("recorder", Value.Text("empty"), "urn:nema:recorder", w3);
-        let (w5, witness) = birth("witness", Value.Text("empty"), "urn:nema:witness", w4);
-        let w6 = animate(recorder, pulse, Reaction.Recorder, w5) |> register(recorder, seed, "specimen", pulse);
-        let w7 = animate(witness, pulse, Reaction.Witness, w6) |> register(witness, seed, "same specimen", pulse);
-        let (w8, aborted) = tickNotify(pulse, seed, "discard me", false, w7);
-        let (w9, committed) = tickNotify(pulse, seed, "awake", true, w8);
-        let (w10, session, asked) = ask(pulse, seed, "continue?", w9);
+        let aeron = Locator.Aeron("stream:seed");
+        let cas = Locator.CAS("sha256:seed");
+        let seedTarget = RepresentationTarget.Object(seed);
+        let w2 = bindLocator(seedTarget, aeron, w1) |> replaceLocator(seedTarget, aeron, cas);
+        let location = "represent ${showObject(seed)} Aeron(stream:seed) -> CAS(sha256:seed); identity remains ${showObject(seed)}";
+        let (w3, pulse) = newPulse("hand crank", w2);
+        let w4 = animate(seed, pulse, Reaction.Notifier, w3);
+        let (w5, recorder) = birth("recorder", Value.Text("empty"), w4);
+        let (w6, witness) = birth("witness", Value.Text("empty"), w5);
+        let w7 = animate(recorder, pulse, Reaction.Recorder, w6) |> register(recorder, seed, "specimen", pulse);
+        let w8 = animate(witness, pulse, Reaction.Witness, w7) |> register(witness, seed, "same specimen", pulse);
+        let (w9, aborted) = tickNotify(pulse, seed, "discard me", false, w8);
+        let (w10, committed) = tickNotify(pulse, seed, "awake", true, w9);
+        let (w11, session, asked) = ask(pulse, seed, "continue?", w10);
         let address = sessionAddress(session);
-        let durable = rebind(address, Binding.Durable("recipe:continue"), w10);
+        let durable = rebind(address, Binding.Durable("recipe:continue"), w11);
         let liveAgain = rebind(address, Binding.Live, durable);
         let pending = "Datalog before resolution PendingContinuation=${queryPendingContinuations(liveAgain)}";
-        let (w11, finished, resolution) = resolveAsk(pulse, "yes", session, liveAgain);
-        let (w12, secondPulse) = newPulse("metronome", w11);
-        let (w13, measure) = newMeasure("duet", List#{(pulse, "caller"), (secondPulse, "answerer")}, List#{"question", "answer"}, w12);
-        let w14 = ready(measure, pulse, w13);
+        let (w12, finished, resolution) = resolveAsk(pulse, "yes", session, liveAgain);
+        let (w13, secondPulse) = newPulse("metronome", w12);
+        let (w14, measure) = newMeasure("duet", List#{(pulse, "caller"), (secondPulse, "answerer")}, List#{"question", "answer"}, w13);
+        let w15 = ready(measure, pulse, w14);
         let beforeOpen = "${showMeasure(measure)} gathering after only ${showPulse(pulse)} is ready";
-        let w15 = ready(measure, secondPulse, w14);
-        let opened = describeMeasure(measure, w15);
-        let w16 = fulfill(measure, "question", w15);
-        let w17 = fulfill(measure, "answer", w16);
-        let closed = describeMeasure(measure, w17);
-        let datalog = "Datalog LiveObserver=${queryLiveObservers(w17)} PendingContinuation=${queryPendingContinuations(w17)} MeasureClosed=${queryMeasureClosed(w17)} Origin=${queryInvocationOrigins(w17)}";
+        let w16 = ready(measure, secondPulse, w15);
+        let opened = describeMeasure(measure, w16);
+        let w17 = fulfill(measure, "question", w16);
+        let w18 = fulfill(measure, "answer", w17);
+        let closed = describeMeasure(measure, w18);
+        let datalog = "Datalog LiveObserver=${queryLiveObservers(w18)} PendingContinuation=${queryPendingContinuations(w18)} MeasureClosed=${queryMeasureClosed(w18)} Origin=${queryInvocationOrigins(w18)}";
         let resumedAt = finishedAt(finished) |> Option.getWithDefault("not resumed");
         let committedId = committed#committedInvocations |> List.head |> Option.map(invocationId) |> Option.map(showInvocation) |> Option.getWithDefault("none");
         String.intercalate("\n", List#{
             "Nema.Lab.Vivarium",
             inert,
+            location,
             "bind ${showObject(seed)} HasPulse ${showPulse(pulse)} DrivenBy hand-crank => LiveObserver",
             reportTrace(aborted),
             reportTrace(committed),

@@ -1,11 +1,39 @@
 mod TestVivarium {
 
-    use Nema.Lab.Vivarium.{Binding, MeasureState, Reaction, Value}
+    use Nema.Lab.Vivarium.{Binding, Locator, MeasureState, Reaction, RepresentationTarget, Value}
 
     def inertSeed(): (Nema.Lab.Vivarium.World, Nema.Lab.Vivarium.ObjectId, Nema.Lab.Vivarium.PulseId) = {
-        let (w1, object) = Nema.Lab.Vivarium.birth("seed", Value.Text("asleep"), "urn:test:seed", Nema.Lab.Vivarium.empty());
+        let (w1, object) = Nema.Lab.Vivarium.birth("seed", Value.Text("asleep"), Nema.Lab.Vivarium.empty());
         let (w2, pulse) = Nema.Lab.Vivarium.newPulse("test-driver", w1);
         (w2, object, pulse)
+    }
+
+    @Test
+    pub def identitySurvivesLocatorChangesAndRemoval(): Unit \ Assert = {
+        let (w1, object) = Nema.Lab.Vivarium.birth("seed", Value.Text("asleep"), Nema.Lab.Vivarium.empty());
+        let head = Nema.Lab.Vivarium.objectHead(object, w1);
+        let payload = Nema.Lab.Vivarium.objectPayloadId(object, w1);
+        let target = RepresentationTarget.Object(object);
+        let w2 = Nema.Lab.Vivarium.bindLocator(target, Locator.Aeron("stream:17"), w1);
+        let w3 = Nema.Lab.Vivarium.bindLocator(target, Locator.Memory("jvm:17"), w2);
+        let w4 = Nema.Lab.Vivarium.replaceLocator(target, Locator.Aeron("stream:17"), Locator.CAS("sha256:17"), w3);
+        let w5 = Nema.Lab.Vivarium.unbindLocator(target, Locator.Memory("jvm:17"), w4);
+        let w6 = Nema.Lab.Vivarium.unbindLocator(target, Locator.CAS("sha256:17"), w5);
+        let w7 = match head {
+            case Some(revision) => Nema.Lab.Vivarium.bindLocator(RepresentationTarget.Revision(revision), Locator.CAS("sha256:r40"), w6)
+            case None => w6
+        };
+        let w8 = match payload {
+            case Some(value) => Nema.Lab.Vivarium.bindLocator(RepresentationTarget.Payload(value), Locator.Memory("jvm:v70"), w7)
+            case None => w7
+        };
+        Assert.assertEq(expected = Set#{Locator.CAS("sha256:17"), Locator.Memory("jvm:17")}, Nema.Lab.Vivarium.locators(target, w4));
+        Assert.assertEq(expected = Set#{}, Nema.Lab.Vivarium.locators(target, w8));
+        Assert.assertEq(expected = Set#{Locator.CAS("sha256:r40")}, head |> Option.map(r -> Nema.Lab.Vivarium.locators(RepresentationTarget.Revision(r), w8)) |> Option.getWithDefault(Set.empty()));
+        Assert.assertEq(expected = Set#{Locator.Memory("jvm:v70")}, payload |> Option.map(p -> Nema.Lab.Vivarium.locators(RepresentationTarget.Payload(p), w8)) |> Option.getWithDefault(Set.empty()));
+        Assert.assertEq(expected = "O17", Nema.Lab.Vivarium.showObject(object));
+        Assert.assertEq(expected = head, Nema.Lab.Vivarium.objectHead(object, w8));
+        Assert.assertEq(expected = 1, Nema.Lab.Vivarium.revisionCount(object, w8))
     }
 
     def liveSeed(): (Nema.Lab.Vivarium.World, Nema.Lab.Vivarium.ObjectId, Nema.Lab.Vivarium.PulseId) = {
@@ -36,8 +64,8 @@ mod TestVivarium {
     @Test
     pub def observersCanNameTheSameObjectDifferently(): Unit \ Assert = {
         let (w1, subject, pulse) = liveSeed();
-        let (w2, first) = Nema.Lab.Vivarium.birth("first", Value.Text("empty"), "urn:test:first", w1);
-        let (w3, second) = Nema.Lab.Vivarium.birth("second", Value.Text("empty"), "urn:test:second", w2);
+        let (w2, first) = Nema.Lab.Vivarium.birth("first", Value.Text("empty"), w1);
+        let (w3, second) = Nema.Lab.Vivarium.birth("second", Value.Text("empty"), w2);
         let w4 = Nema.Lab.Vivarium.animate(first, pulse, Reaction.Recorder, w3);
         let w5 = Nema.Lab.Vivarium.register(first, subject, "specimen", pulse, w4);
         let w6 = Nema.Lab.Vivarium.animate(second, pulse, Reaction.Witness, w5);
@@ -79,8 +107,8 @@ mod TestVivarium {
     @Test
     pub def oneInvocationHasIndependentObserverProjections(): Unit \ Assert = {
         let (w1, subject, pulse) = liveSeed();
-        let (w2, recorder) = Nema.Lab.Vivarium.birth("recorder", Value.Text("empty"), "urn:test:recorder", w1);
-        let (w3, witness) = Nema.Lab.Vivarium.birth("witness", Value.Text("empty"), "urn:test:witness", w2);
+        let (w2, recorder) = Nema.Lab.Vivarium.birth("recorder", Value.Text("empty"), w1);
+        let (w3, witness) = Nema.Lab.Vivarium.birth("witness", Value.Text("empty"), w2);
         let w4 = Nema.Lab.Vivarium.animate(recorder, pulse, Reaction.Recorder, w3);
         let w5 = Nema.Lab.Vivarium.register(recorder, subject, "subject", pulse, w4);
         let w6 = Nema.Lab.Vivarium.animate(witness, pulse, Reaction.Witness, w5);

@@ -68,18 +68,41 @@ boundary is explicit and replaceable; no in-process JVM object crosses it.
 
 ## Vivarium boundary
 
-`Nema.Lab.Vivarium` is a deliberately isolated thought experiment. Its World
-is immutable data: locally ordered Pulses drive Beats, live Observer roles are
-derived from bindings, systole stages work against the prior closed state,
-commit publishes revisions and effect invocations, and diastole dispatches or
-resolves them. Measures coordinate independent Pulse frontiers without adding
-a global clock. Datalog reads a fact projection of that World and never drives
-it.
+`Nema.Lab.Vivarium` is the deliberately isolated, pure reference model. Its
+World is immutable data: Genesis establishes Object identity, Revisions record
+state, and zero or more mutable representation bindings describe location.
+Locally ordered Pulses drive Beats, Observer roles are derived from bindings,
+systole stages against prior closed state, commit publishes Revisions and
+EffectInvocations, and diastole dispatches or resolves them. Measures coordinate
+independent Pulse frontiers without adding a global clock. Datalog reads a fact
+projection of the World and never drives it.
 
-The result-bearing `Ask` is the one intentional runtime edge. Its Flix handler
-returns a live local resumption, while the World retains only a stable
-continuation address and its time-relative binding. The specimen does not
-serialize JVM continuations, add persistence, or alter the existing fork bench.
+`Nema.Lab.Vivarium.Live` realizes the same observable joints with worker-local
+Flix effect handlers, captured resumptions, unbuffered CSP channels, spawned
+processes, and regions. `Pulse.next()` really blocks while its handler holds the
+resumption; a separate deterministic driver supplies the next Beat. A live
+`Ask` remains unfinished until a later driver action resolves its stable
+ContinuationAddress, invokes the held local resumption under a new
+`BeatContext`, and lets the Observer wait again. Independent sink processes
+interpret one committed `Notify`, while two other Pulse workers establish the
+Measure's actual opening and closing frontiers.
+
+```text
+PURE REFERENCE                 LIVE REALIZATION
+Nema.Lab.Vivarium       -->    effects + resumptions + CSP + regions
+immutable World                region-bound processes, immutable trace
+                                      |
+                                      | later, not v0
+                                      v
+                               distributed realization
+```
+
+Flix 0.75.3 was observed to wait for a region child blocked in `Channel.recv`
+rather than implicitly cancelling it at region exit. The live specimen uses an
+explicit `Stop` handshake so the waiter resumes and detaches before the region
+closes. Semantic Object identity and Revision history outlive that embodiment.
+Neither specimen serializes a JVM continuation, adds persistence, or alters the
+existing fork bench. The live Datalog projection remains descriptive only.
 
 ## Durability
 
