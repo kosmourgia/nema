@@ -1,0 +1,16 @@
+[Unit]
+Description=Nema zygon local registry (example; install explicitly)
+
+[Service]
+Type=simple
+WorkingDirectory=%h/nema-zygon
+ExecStart=/usr/bin/python3 %h/nema-zygon/modules/zygon/bin/zygon --runtime %h/nema-zygon/.nema/zygon-service serve
+Restart=on-failure
+RestartSec=2
+KillMode=control-group
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
