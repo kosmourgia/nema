@@ -1,0 +1,5 @@
+.nema/
+build/
+artifact/
+lib/
+.bsp/

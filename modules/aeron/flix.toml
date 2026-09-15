@@ -1,0 +1,10 @@
+[package]
+name = "nema-aeron"
+description = "Independent Flix-native Aeron Transport and Archive laboratory"
+version = "0.1.0"
+flix = "0.75.3"
+authors = ["Nema contributors"]
+
+[jar-dependencies]
+"aeron-all-1.53.1.jar" = "url:https://repo.maven.apache.org/maven2/io/aeron/aeron-all/1.53.1/aeron-all-1.53.1.jar"
+"nema-aeron-bridge.jar" = "url:file:../deps/nema-aeron-bridge.jar"
