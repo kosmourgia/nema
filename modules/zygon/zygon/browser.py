@@ -13,6 +13,7 @@ import secrets
 import shutil
 import signal
 import time
+import uuid
 
 from .client import Client
 from .protocol import ProtocolError
@@ -154,6 +155,9 @@ class BrowserBridge:
             if document is None:
                 continue
             document_id, native_document = identity(document.get("id")), identity(document.get("nativeDocumentId"))
+            previous = self.state["registrations"].get(tab_id + ":demo")
+            if previous and previous["incarnation"] == document_id and previous["binding"]["nativeDocumentId"] != native_document:
+                raise ValueError("native document changed without a new attachment incarnation")
             url = document.get("url")
             if not isinstance(url, str) or not (url == self.origin + "/demo" or url.startswith(self.origin + "/demo?")):
                 raise ValueError("document is outside the explicitly selected local demo page")
@@ -187,10 +191,11 @@ class BrowserBridge:
             if raw is not None:
                 # Exact authenticated body bytes, separately from reductions.
                 # Authentication headers/secret are deliberately never captured.
+                body_id = str(uuid.uuid4())
                 for offset in range(0, len(raw), 12000):
                     await self.client.call("observe", {"source": extension["id"], "incarnation": extension["incarnation"],
                         "kind": "browser.transport.body", "body": {"bytesBase64": base64.b64encode(raw[offset:offset+12000]).decode(),
-                            "offset": offset, "length": len(raw), "monotonicNs": str(time.monotonic_ns())}})
+                            "bodyId": body_id, "offset": offset, "length": len(raw), "monotonicNs": str(time.monotonic_ns())}})
             acknowledged = []
             for native_result in results:
                 invocation_id = identity(native_result.get("invocationId"))
